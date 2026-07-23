@@ -1,0 +1,2 @@
+# Airborne daemon (drone-side Jetson). Only pymavlink is needed; already installed.
+pymavlink>=2.4

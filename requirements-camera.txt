@@ -1,0 +1,10 @@
+# Camera streamer (camera_daemon) — drone-side Jetson.
+#
+# On JetPack these are ALREADY provided system-wide (cv2 + numpy ship with the
+# image); do NOT pip-install opencv-python over them, it can shadow the CUDA build.
+# This file is only for non-JetPack hosts / dev boxes that lack them.
+#
+#   python -c "import cv2, numpy" && echo "already present — skip this file"
+#
+opencv-python>=4.5
+numpy>=1.19
