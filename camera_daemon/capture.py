@@ -5,6 +5,12 @@ latest JPEG behind a condition variable. HTTP client threads wait on that variab
 and are handed the freshest frame, so a slow client never backs up capture and the
 capture rate is paced by the camera, not by a busy loop. If the camera disappears,
 the thread drops it and re-detects, so unplug/replug recovers on its own.
+
+Whichever backend ``open_camera`` picked, the goal is the same: get the camera's
+own JPEG out to clients without decoding it. GStreamer negotiates image/jpeg in the
+pipeline; V4L2 gets there by switching CONVERT_RGB off. Either way the frames come
+back as encoded byte buffers, and only a camera that refuses both costs us a
+decode+encode round trip.
 """
 from __future__ import annotations
 
@@ -19,6 +25,23 @@ from .settings import CameraSettings
 
 log = logging.getLogger(__name__)
 
+_SOI = b"\xff\xd8"  # JPEG start-of-image marker
+
+
+def _is_encoded_buffer(frame) -> bool:
+    """True if ``frame`` is a byte buffer of an already-encoded frame, not an image.
+
+    The two passthrough paths shape it differently: V4L2 with CONVERT_RGB off yields
+    a 1-D buffer, while OpenCV's GStreamer backend hands the same bytes back as a
+    single (1, N) row. Telling them apart from a real image matters because an
+    encoded buffer must never reach ``imencode`` — that call would succeed and emit
+    a one-pixel-tall JPEG of the byte string rather than failing loudly.
+    """
+    ndim = getattr(frame, "ndim", 0)
+    if ndim == 1:
+        return True
+    return ndim == 2 and getattr(frame, "shape", (0,))[0] == 1
+
 
 class CameraStream:
     def __init__(self, settings: CameraSettings) -> None:
@@ -30,6 +53,8 @@ class CameraStream:
         self._thread: threading.Thread | None = None
         # diagnostics (guarded by _cond)
         self._device: str | None = None
+        self._backend: str | None = None
+        self._passthrough = False
         self._connected = False
         self._last_error: str | None = None
         self._fps = 0.0
@@ -49,29 +74,41 @@ class CameraStream:
     # ---- producer ----
     def _run(self) -> None:
         while not self._stop.is_set():
-            cap, dev = open_camera(self._s)
+            cap, dev, backend = open_camera(self._s)
             if cap is None:
-                self._set_status(connected=False, device=None,
+                self._set_status(connected=False, device=None, backend=None,
                                  error="no camera detected")
                 self._stop.wait(self._s.retry_interval_s)
                 continue
-            self._set_status(connected=True, device=dev, error=None)
+            self._set_status(connected=True, device=dev, backend=backend, error=None)
             try:
-                self._pump(cap)
+                self._pump(cap, backend)
             finally:
                 cap.release()
-                self._set_status(connected=False, device=dev, error="camera disconnected")
+                self._set_status(connected=False, device=dev, backend=backend,
+                                 error="camera disconnected")
 
-    def _pump(self, cap: "cv2.VideoCapture") -> None:
-        # Try zero-copy JPEG passthrough; verify on the first frames and fall back
-        # to decode+encode if the driver doesn't deliver JPEG buffers.
-        passthrough = False
-        if self._s.raw_passthrough:
+    def _pump(self, cap: "cv2.VideoCapture", backend: str | None) -> None:
+        # Establish JPEG passthrough, then verify it on the first frames and fall
+        # back to decode+encode if the frames aren't actually JPEG.
+        if backend == "gstreamer":
+            # The pipeline already negotiated image/jpeg, so there is no CONVERT_RGB
+            # to turn off — just confirm the sink is really handing over JPEG.
+            passthrough = self._verify_passthrough(cap)
+            if not passthrough:
+                log.info("gstreamer sink is not delivering JPEG; using decode+encode")
+        elif self._s.raw_passthrough:
             cap.set(cv2.CAP_PROP_CONVERT_RGB, 0.0)
             passthrough = self._verify_passthrough(cap)
             if not passthrough:
                 cap.set(cv2.CAP_PROP_CONVERT_RGB, 1.0)
                 log.info("MJPG passthrough unavailable; using decode+encode")
+        else:
+            passthrough = False
+        # Surfaced in /healthz: it's the difference between forwarding the camera's
+        # own JPEG and spending CPU re-encoding every frame.
+        with self._cond:
+            self._passthrough = passthrough
 
         fails = 0
         frames = 0
@@ -85,7 +122,7 @@ class CameraStream:
                     return
                 continue
             fails = 0
-            jpg = self._encode(frame, passthrough)
+            jpg = self._encode(frame)
             if jpg is None:
                 continue
             self._publish(jpg)
@@ -101,17 +138,16 @@ class CameraStream:
     def _verify_passthrough(self, cap: "cv2.VideoCapture", attempts: int = 10) -> bool:
         for _ in range(attempts):
             ok, frame = cap.read()
-            if ok and frame is not None and frame.ndim == 1:
-                b = frame.tobytes()
-                if b[:2] == b"\xff\xd8":  # JPEG SOI
+            if ok and frame is not None and _is_encoded_buffer(frame):
+                if frame.tobytes()[:2] == _SOI:
                     return True
         return False
 
-    def _encode(self, frame, passthrough: bool) -> bytes | None:
-        # Raw 1-D buffer: either a JPEG (passthrough) or unusable — never imencode it.
-        if getattr(frame, "ndim", 0) == 1:
+    def _encode(self, frame) -> bytes | None:
+        # Encoded buffer: either a JPEG (passthrough) or unusable — never imencode it.
+        if _is_encoded_buffer(frame):
             b = frame.tobytes()
-            return b if b[:2] == b"\xff\xd8" else None
+            return b if b[:2] == _SOI else None
         ok, buf = cv2.imencode(
             ".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), self._s.jpeg_quality]
         )
@@ -123,13 +159,16 @@ class CameraStream:
             self._seq += 1
             self._cond.notify_all()
 
-    def _set_status(self, *, connected: bool, device: str | None, error: str | None) -> None:
+    def _set_status(self, *, connected: bool, device: str | None,
+                    backend: str | None, error: str | None) -> None:
         with self._cond:
             self._connected = connected
             self._device = device
+            self._backend = backend
             self._last_error = error
             if not connected:
                 self._fps = 0.0
+                self._passthrough = False
 
     # ---- consumer API (HTTP handlers) ----
     def next_frame(self, last_seq: int, timeout: float) -> tuple[int, bytes | None]:
@@ -152,6 +191,8 @@ class CameraStream:
             return {
                 "connected": self._connected,
                 "device": self._device,
+                "backend": self._backend,
+                "passthrough": self._passthrough,
                 "fps": round(self._fps, 1),
                 "have_frame": self._frame is not None,
                 "error": self._last_error,

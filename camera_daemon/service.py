@@ -62,9 +62,15 @@ def main(argv: list[str] | None = None) -> int:
     stop = threading.Event()
 
     def _handle(signum, _frame):  # noqa: ANN001
+        # Do the minimum here and let the main thread run the actual shutdown.
+        # Calling server.shutdown() from the handler would deadlock: it blocks until
+        # serve_forever() returns, and serve_forever() runs on whichever thread the
+        # handler interrupted.
         log.info("received %s, shutting down", signal.Signals(signum).name)
         stop.set()
-        server.shutdown()
+        # Don't swallow a repeat signal — restore the default disposition so a second
+        # Ctrl-C kills the process outright if shutdown itself wedges.
+        signal.signal(signum, signal.SIG_DFL)
 
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
@@ -72,14 +78,26 @@ def main(argv: list[str] | None = None) -> int:
         except ValueError:  # pragma: no cover - not on main thread
             pass
 
+    # serve_forever() goes on its own thread so the main thread stays free to call
+    # shutdown() — the stdlib requires those be different threads.
+    server_thread = threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.5},
+        name="camera-http", daemon=True,
+    )
+    server_thread.start()
+
     log.info(
         "camera daemon ready on http://%s:%d/stream.mjpg (device=%s, %dx%d@%d)",
         settings.host, settings.port, settings.device,
         settings.width, settings.height, settings.fps,
     )
     try:
-        server.serve_forever(poll_interval=0.5)
+        # Timed waits: a signal delivered while blocked in wait() is never missed.
+        while not stop.wait(0.5):
+            pass
     finally:
+        server.shutdown()
+        server_thread.join(timeout=3.0)
         server.server_close()
         stream.stop()
         log.info("camera daemon stopped")
