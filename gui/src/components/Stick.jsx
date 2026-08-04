@@ -21,6 +21,33 @@ const KNOB_HALF = 36; // knob is 72px; keep in sync with .knob in styles.css
 export default function Stick({ axesRef, axisX, axisY, hint, disabled = false }) {
   const padRef = useRef(null);
   const knobRef = useRef(null);
+  const readoutRef = useRef(null);
+
+  // Live numeric readout of the two axes. Reads `axesRef` rather than this pad's
+  // own drag state so it is correct no matter who is driving — touch or keyboard.
+  // Written straight to the DOM and only when the text actually changes, so it
+  // costs no React renders and no needless layout.
+  useEffect(() => {
+    const el = readoutRef.current;
+    if (!el) return undefined;
+    let raf = 0;
+    let last = "";
+    const fmt = (v) => (v < 0 ? "" : "+") + v.toFixed(2);
+
+    const tick = () => {
+      const a = axesRef.current;
+      const text = `${axisY.slice(0, 3).toUpperCase()} ${fmt(a[axisY])}   ${axisX
+        .slice(0, 3)
+        .toUpperCase()} ${fmt(a[axisX])}`;
+      if (text !== last) {
+        el.textContent = text;
+        last = text;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [axesRef, axisX, axisY]);
 
   useEffect(() => {
     const pad = padRef.current;
@@ -104,6 +131,7 @@ export default function Stick({ axesRef, axisX, axisY, hint, disabled = false })
         <div className="cv" />
         <div className="knob" ref={knobRef} />
       </div>
+      <div className="stickreadout" ref={readoutRef} />
       <div className="stickhint">{disabled ? "Keyboard has control" : hint}</div>
     </div>
   );

@@ -18,13 +18,21 @@ function Dot({ cls }) {
  * resized the video underneath. Reserving the space means the bar never reflows
  * no matter what the numbers do.
  */
-function Chip({ k, w, drop, children }) {
+function Chip({ k, w, drop, fill, children }) {
   return (
     <div className={`chip${drop ? ` drop-${drop}` : ""}`}>
       <span className="k">{k}</span>
       <span className="v" style={w ? { minWidth: `${w}ch` } : undefined}>
         {children}
       </span>
+      {fill != null && (
+        <span className="chipgauge">
+          <span
+            className={`chipgaugefill${fill <= 20 ? " low" : fill <= 40 ? " mid" : ""}`}
+            style={{ width: `${Math.max(0, Math.min(100, fill))}%` }}
+          />
+        </span>
+      )}
     </div>
   );
 }
@@ -66,7 +74,7 @@ export default function TelemetryBar({ tlm, conn, airborneIp }) {
 
       <Chip k="Mode" w={9}>{tlm?.mode || "--"}</Chip>
       <Chip k="GPS" w={13}>{tlm ? `${tlm.sats} sat · fix ${tlm.gps_fix}` : "--"}</Chip>
-      <Chip k="Batt" w={11}>
+      <Chip k="Batt" w={11} fill={tlm && tlm.batt_pct >= 0 ? tlm.batt_pct : null}>
         {tlm ? `${tlm.batt_v} V${tlm.batt_pct >= 0 ? "  " + tlm.batt_pct + "%" : ""}` : "--"}
       </Chip>
       <Chip k="Cur" w={7} drop={1}>{tlm ? `${tlm.current_a} A` : "--"}</Chip>

@@ -85,6 +85,7 @@ export default function App() {
           <div className="console">
             <CommandDeck
               mode={tlm?.mode}
+              allowedModes={tlm?.allowed_modes}
               onSetMode={setMode}
               onDisarm={disarm}
               onTakeoff={() => setTakeoffOpen(true)}

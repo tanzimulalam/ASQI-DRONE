@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react";
+
 /**
  * The flanking panels either side of the feed.
  *
@@ -43,10 +45,24 @@ function StatRow({ label, value, cls, unit }) {
   );
 }
 
+const HISTORY_LEN = 48;
+
 export function VisionPanel({ det }) {
   const boxes = det?.boxes ?? [];
   // Biggest score first; the detector already sorts, but don't rely on it.
   const rows = [...boxes].sort((a, b) => b.score - a.score).slice(0, 7);
+
+  // Rolling object-count history, so a detector that is flickering in and out is
+  // visible rather than something you only catch by staring at the number. Kept
+  // in a ref because this panel already re-renders on every detection frame.
+  const history = useRef([]);
+  const seenSeq = useRef(null);
+  if (det && det.seq !== seenSeq.current) {
+    seenSeq.current = det.seq;
+    history.current = [...history.current, boxes.length].slice(-HISTORY_LEN);
+  }
+  const hist = history.current;
+  const peak = Math.max(1, ...hist);
 
   return (
     <aside className="sidepanel">
@@ -73,6 +89,18 @@ export function VisionPanel({ det }) {
         />
       </div>
 
+      {hist.length > 1 && (
+        <div className="spark" title="objects in frame, recent history">
+          {hist.map((n, i) => (
+            <span
+              key={i}
+              className={`sparkbar${n === 0 ? " zero" : ""}`}
+              style={{ height: `${Math.max(6, (n / peak) * 100)}%` }}
+            />
+          ))}
+        </div>
+      )}
+
       <div className="panel-body">
         {!det && <div className="panel-empty">detector offline</div>}
         {det && rows.length === 0 && <div className="panel-empty">nothing in frame</div>}
@@ -94,9 +122,28 @@ export function VisionPanel({ det }) {
   );
 }
 
+/** mm:ss (or h:mm:ss past an hour) for a millisecond duration. */
+function clock(ms) {
+  const s = Math.floor(ms / 1000);
+  const hh = Math.floor(s / 3600);
+  const mm = String(Math.floor((s % 3600) / 60)).padStart(2, "0");
+  const ss = String(s % 60).padStart(2, "0");
+  return hh ? `${hh}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
 export function StatusPanel({ tlm, det }) {
   // Newest first, and only the handful that fit.
   const events = [...(tlm?.events ?? [])].reverse().slice(0, 6);
+
+  // Session length, measured from the first telemetry frame of this connection.
+  const startedAt = useRef(null);
+  const [now, setNow] = useState(Date.now());
+  if (tlm && startedAt.current == null) startedAt.current = Date.now();
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const elapsed = startedAt.current == null ? null : now - startedAt.current;
 
   return (
     <aside className="sidepanel">
@@ -132,6 +179,7 @@ export function StatusPanel({ tlm, det }) {
           value={tlm ? `${tlm.sats} sat` : "--"}
           cls={tlm ? (tlm.gps_fix >= 3 ? "g" : "y") : "x"}
         />
+        <StatRow label="Session" value={elapsed == null ? "--" : clock(elapsed)} />
       </div>
 
       <div className="panel-head panel-head-sub">
