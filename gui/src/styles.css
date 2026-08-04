@@ -306,6 +306,34 @@ body::before {
 
 /* ======================= failsafe / takeover banners ======================= */
 
+#cbanner {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gap);
+  padding: calc(var(--gap-sm) * 1.4) var(--gap);
+  background: repeating-linear-gradient(
+    45deg,
+    #6d0c16 0 14px,
+    #57090f 14px 28px
+  );
+  color: #fff;
+  font-weight: 800;
+  font-size: var(--fs-value);
+  letter-spacing: 0.05em;
+  border-bottom: 2px solid var(--bad);
+}
+
+#cbanner.on { display: flex; }
+
+.cbanner-age {
+  font-family: var(--num);
+  font-weight: 600;
+  font-size: var(--fs-hint);
+  letter-spacing: 0;
+  opacity: 0.85;
+}
+
 #fsbanner,
 #tobanner {
   display: none;

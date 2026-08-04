@@ -50,3 +50,9 @@ export const KEY_RISE_MS = 300;
 // ...and when releasing one. Shorter on purpose: returning to neutral should
 // never be the slow direction.
 export const KEY_FALL_MS = 150;
+
+// Control is considered not reaching the aircraft once its reported ctrl age
+// passes this. Well above the airborne failsafe window (600 ms) so a brief
+// network hiccup does not raise the banner, low enough that a genuinely dead
+// command path is obvious within a second.
+export const CTRL_DEAD_MS = 1000;

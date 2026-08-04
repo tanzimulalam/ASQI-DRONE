@@ -3,6 +3,7 @@ import { useDroneLink } from "./hooks/useDroneLink.js";
 import { useKeyboardControl } from "./hooks/useKeyboardControl.js";
 import TelemetryBar from "./components/TelemetryBar.jsx";
 import FailsafeBanner from "./components/FailsafeBanner.jsx";
+import ControlBanner from "./components/ControlBanner.jsx";
 import TakeoverBanner from "./components/TakeoverBanner.jsx";
 import Stick from "./components/Stick.jsx";
 import VideoPanel from "./components/VideoPanel.jsx";
@@ -62,6 +63,7 @@ export default function App() {
   return (
     <div id="app">
       <TelemetryBar tlm={tlm} conn={conn} airborneIp={airborneIp} />
+      <ControlBanner tlm={tlm} />
       <FailsafeBanner active={!!tlm?.failsafe} onResume={resume} />
       <TakeoverBanner active={!tlm?.failsafe && !!tlm?.pilot_takeover} onResume={resume} />
 
