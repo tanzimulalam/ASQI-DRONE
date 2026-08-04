@@ -1,0 +1,32 @@
+[Unit]
+Description=Ground station object detector (TensorRT, containerised)
+Documentation=https://github.com/mtsuissl/mtsuissl-ground
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Runs as root because it drives docker directly. Everything it can reach is
+# already defined by run-container.sh, which mounts only the jetson-inference
+# cache read-write and the repo read-only.
+User=root
+WorkingDirectory=/home/john/Documents/mtsuissl-ground
+EnvironmentFile=/etc/drone/ground.env
+ExecStart=/home/john/Documents/mtsuissl-ground/detector/run-container.sh
+# `docker run --rm` normally cleans up, but a SIGKILLed run (OOM, hard reboot)
+# leaves the name taken and the next start fails. Clear it either side.
+ExecStartPre=-/usr/bin/docker rm -f drone-detector
+ExecStopPost=-/usr/bin/docker rm -f drone-detector
+Restart=always
+# Longer than the others: the first run after a model change builds a TensorRT
+# engine, which takes minutes and must not be mistaken for a crash loop.
+RestartSec=15
+StartLimitIntervalSec=600
+StartLimitBurst=5
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
