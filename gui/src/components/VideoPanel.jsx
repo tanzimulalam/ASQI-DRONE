@@ -128,42 +128,41 @@ export default function VideoPanel({ det }) {
         : "no source configured";
 
   return (
-    <div id="videowrap">
-      {VIDEO_URL && (
-        <img
-          id="video"
-          ref={imgRef}
-          alt=""
-          style={{ display: live ? "block" : "none" }}
-        />
-      )}
-      {/* detection overlay sits directly on top of the video, click-through */}
-      <canvas id="detectcanvas" ref={canvasRef} />
+    /* videoarea is the space the feed may occupy; videowrap is the largest 4:3
+       box that fits inside it (sized in CSS from the area's own dimensions). */
+    <div className="videoarea">
+      <div id="videowrap">
+        {VIDEO_URL && (
+          <img id="video" ref={imgRef} alt="" style={{ display: live ? "block" : "none" }} />
+        )}
+        {/* detection overlay sits directly on top of the video, click-through */}
+        <canvas id="detectcanvas" ref={canvasRef} />
 
-      {VIDEO_URL && (
-        <div id="detectbar">
-          <button
-            className={`detecttoggle ${detectOn ? "on" : ""}`}
-            onClick={() => setDetectOn((v) => !v)}
-            title="Toggle on-screen object detection"
-          >
-            <span className="dot" />
-            DETECT {detectOn ? "ON" : "OFF"}
-          </button>
-          {badge && <span className="detectbadge">{badge}</span>}
-        </div>
-      )}
+        {VIDEO_URL && (
+          <div id="detectbar">
+            <button
+              className={`detecttoggle ${detectOn ? "on" : ""}`}
+              onClick={() => setDetectOn((v) => !v)}
+              title="Toggle on-screen object detection"
+            >
+              <span className="dot" />
+              DETECT {detectOn ? "ON" : "OFF"}
+            </button>
+            {badge && <span className="detectbadge">{badge}</span>}
+          </div>
+        )}
 
-      {state !== "live" && (
-        <div id="videoempty">
-          <div className="big">VIDEO&nbsp;FEED</div>
-          <div className="sm">{hint}</div>
-        </div>
-      )}
-      <span className="brk tl" />
-      <span className="brk tr" />
-      <span className="brk bl" />
-      <span className="brk br" />
+        {state !== "live" && (
+          <div id="videoempty">
+            <div className="big">VIDEO&nbsp;FEED</div>
+            <div className="sm">{hint}</div>
+          </div>
+        )}
+        <span className="brk tl" />
+        <span className="brk tr" />
+        <span className="brk bl" />
+        <span className="brk br" />
+      </div>
     </div>
   );
 }
