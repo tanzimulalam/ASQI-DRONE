@@ -33,13 +33,25 @@ you want to fly it rather than change it.
   from the vehicle (not from a button press), and runs an **active** link-loss
   failsafe. The Pixhawk is always the source of truth.
 
-## Measured facts about *this* aircraft (read 2026-07-07)
+## Measured facts about *this* aircraft (re-read from the vehicle 2026-08-04)
 - FC: Holybro Pixhawk 6C on `/dev/ttyACM0`, ArduCopter, quad. Heartbeats confirmed.
 - RC cal: ch1 roll 1000/1501/2000 · ch2 pitch 1000/1500/2000 · ch3 thr 1000/1000/2000
   · ch4 yaw 1017/1503/2000 (all non-reversed). The daemon re-reads these at startup.
 - Modes on switch: Loiter=`FLTMODE6`, AltHold=`FLTMODE4`, rest Stabilize.
-- `RC_OVERRIDE_TIME=3` s, `ARMING_CHECK=1` (all on), `FS_THR_ENABLE=1`,
-  **`FS_GCS_ENABLE=0`**, `FENCE_ENABLE=0`.
+- `SYSID_MYGCS=250`, `ARMING_CHECK=1` (all on), `FS_GCS_ENABLE=1`, `FENCE_ENABLE=1`
+  (type 7, action RTL, radius 300 m, alt max 100 m), `FS_THR_ENABLE=1`,
+  `RC_OVERRIDE_TIME=3` s, `RC_OPTIONS=32` (bit 1 "ignore MAVLink overrides" clear).
+
+> Read these off the vehicle rather than trusting this list. On 2026-08-04 the
+> aircraft was found with `ARMING_CHECK=0` (every pre-arm check disabled) and
+> `SYSID_MYGCS=255` against a daemon transmitting as 250, which silently discarded
+> every stick input. Both had drifted from what this file claimed. Verify with:
+>
+> ```bash
+> sudo systemctl stop drone-airborne
+> python3 tools/params.py get SYSID_MYGCS ARMING_CHECK FS_GCS_ENABLE FENCE_ENABLE
+> sudo systemctl start drone-airborne
+> ```
 
 ## ⚠ Safety design choices baked in
 1. **Web piloting only in AltHold / Loiter / PosHold.** In Stabilize the throttle
@@ -84,7 +96,7 @@ you want to fly it rather than change it.
   the transmitter regains stick authority within 3 s.
 - Confirm `RC_OPTIONS` bit 1 ("Ignore MAVLink Overrides") is **not** set, or the
   GUI sticks will never work regardless of sysid.
-- `FS_GCS_ENABLE = 1` — turn on GCS failsafe so loss of the MAVLink GCS link also
+- `FS_GCS_ENABLE = 1` — DONE 2026-08-04.
   triggers the FC's own failsafe (independent of our daemon). The daemon now
   heartbeats as the GCS at 1 Hz, so this watches the daemon process itself.
 - Consider `FENCE_ENABLE = 1` with a sane radius/altitude for early flights.
