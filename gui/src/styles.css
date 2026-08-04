@@ -11,26 +11,36 @@
  */
 
 :root {
+  /* MTSU brand. --mt-blue is sampled from the official athletics mark shipped in
+     gui/public/brand/, and --mt-navy is the True Blue (Pantone 540) listed on the
+     university's brand page. The surfaces below are tinted toward that navy so
+     the cockpit and the logo read as one palette instead of two. */
+  --mt-blue: #036eb7;
+  --mt-navy: #003057;
+  --mt-ink: #231f20;
+
   /* surfaces, back to front */
-  --bg: #070a0f;
-  --bg-glow: #0d1826;
-  --panel: #111823;
-  --panel2: #182231;
-  --panel3: #1f2b3d;
-  --line: #26344a;
-  --line-soft: #1a2434;
+  --bg: #05090f;
+  --bg-glow: #04223c;
+  --panel: #0c1520;
+  --panel2: #132132;
+  --panel3: #1b2f45;
+  --line: #234260;
+  --line-soft: #16273a;
 
   /* text */
-  --txt: #e8eff7;
-  --muted: #8fa0b5;
-  --faint: #5c6b80;
+  --txt: #e9f1f9;
+  --muted: #8ea6bf;
+  --faint: #5a7288;
 
   /* state */
   --ok: #24d17e;
   --warn: #f5a524;
   --bad: #f4384a;
-  --accent: #3fa9ff;
-  --accent-dim: #1d6fd0;
+  /* Lifted off the brand blue for legibility on a near-black panel; the brand
+     value itself stays available as --mt-blue for fills and rules. */
+  --accent: #3fa2e8;
+  --accent-dim: var(--mt-blue);
 
   /* rhythm — every gap/padding derives from these */
   --gap: clamp(6px, 0.9vw, 16px);
@@ -96,13 +106,26 @@ body::before {
 /* ============================ telemetry bar ============================ */
 
 #topbar {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: stretch;
   gap: var(--gap-sm);
   padding: var(--gap-sm) var(--gap);
-  background: linear-gradient(180deg, var(--panel) 0%, rgba(17, 24, 35, 0.86) 100%);
+  background:
+    linear-gradient(180deg, rgba(0, 48, 87, 0.5) 0%, var(--panel) 100%);
   border-bottom: 1px solid var(--line);
+}
+
+/* Thin brand rule across the top of the cockpit. */
+#topbar::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--mt-blue) 0%, var(--accent) 45%, transparent 100%);
 }
 
 .chip {
@@ -190,9 +213,13 @@ body::before {
 }
 
 .brand-logo {
-  height: clamp(20px, 2vw, 40px);
+  height: clamp(22px, 2.2vw, 44px);
   width: auto;
   display: block;
+  /* The mark's outermost stroke is near-black and would disappear into the
+     panel; a faint light drop shadow keeps its silhouette readable. */
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6))
+          drop-shadow(0 0 1px rgba(255, 255, 255, 0.28));
 }
 
 /* Stand-in wordmark used until the official asset is dropped in. */
@@ -459,11 +486,59 @@ body::before {
   gap: 0.3em;
 }
 
+.panel-head-sub {
+  border-top: 1px solid var(--line-soft);
+}
+
 .panel-empty {
   font-size: var(--fs-label);
   color: var(--faint);
   font-style: italic;
   padding: 0.3em 0.2em;
+}
+
+/* instrument rows: label left, tabular value right */
+.panel-stats {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  padding: 0.35em 0.55em;
+  gap: 0.1em;
+}
+
+.statrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5em;
+  padding: 0.18em 0;
+  font-size: var(--fs-label);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.035);
+}
+
+.statrow:last-child { border-bottom: 0; }
+
+.statlabel {
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.statvalue {
+  font-family: var(--num);
+  font-variant-numeric: tabular-nums;
+  color: var(--txt);
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.statunit {
+  color: var(--faint);
+  font-weight: 500;
 }
 
 /* detections */

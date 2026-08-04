@@ -1,25 +1,26 @@
 import { useState } from "react";
 
 /**
- * Corner brand mark.
+ * Corner brand lockup: MTSU mark, rule, lab name.
  *
- * Drop the official university asset at `gui/public/brand/mtsu.svg` (or .png and
- * change LOGO_SRC) and it replaces the wordmark automatically — no code change.
- * Until then the CSS lockup below stands in, so the cockpit never ships with a
- * broken image or a guessed-at logo.
+ * The mark is the official MTSU athletics icon from the university's brand page
+ * (goblueraiders.com/sports/2018/10/18/middle-tennessee-logos). Swap the file at
+ * `gui/public/brand/mtsu.png` to change it — `mtsu-primary.png` (the full lockup
+ * with Lightning) sits alongside it. If the file is ever missing the wordmark
+ * below stands in, so the cockpit never renders a broken image.
  */
-const LOGO_SRC = "/brand/mtsu.svg";
+const LOGO_SRC = "/brand/mtsu.png";
 
 export default function Brand() {
   const [haveLogo, setHaveLogo] = useState(true);
 
   return (
-    <div className="brand" title="MTSU Intelligent & Secured Systems Laboratory">
+    <div className="brand" title="ASQI Lab — Autonomous Systems & Quantum Intelligence Laboratory">
       {haveLogo ? (
         <img
           className="brand-logo"
           src={LOGO_SRC}
-          alt="MTSU"
+          alt="Middle Tennessee State University"
           onError={() => setHaveLogo(false)}
         />
       ) : (
@@ -27,8 +28,8 @@ export default function Brand() {
       )}
       <span className="brand-rule" />
       <span className="brand-text">
-        <span className="brand-lab">ISSL</span>
-        <span className="brand-sub">Intelligent &amp; Secured Systems Lab</span>
+        <span className="brand-lab">ASQI&nbsp;Lab</span>
+        <span className="brand-sub">Autonomous Systems &amp; Quantum Intelligence</span>
       </span>
     </div>
   );

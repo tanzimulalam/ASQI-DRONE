@@ -8,7 +8,7 @@ import Stick from "./components/Stick.jsx";
 import VideoPanel from "./components/VideoPanel.jsx";
 import CommandDeck from "./components/CommandDeck.jsx";
 import ControlMode from "./components/ControlMode.jsx";
-import { DetectionList, EventLog } from "./components/SidePanels.jsx";
+import { VisionPanel, StatusPanel } from "./components/SidePanels.jsx";
 import TakeoffModal from "./components/TakeoffModal.jsx";
 import LoginOverlay from "./components/LoginOverlay.jsx";
 
@@ -67,9 +67,9 @@ export default function App() {
 
       <div id="stage">
         <div className="videostage">
-          <DetectionList det={det} />
+          <VisionPanel det={det} />
           <VideoPanel det={det} />
-          <EventLog tlm={tlm} />
+          <StatusPanel tlm={tlm} det={det} />
         </div>
 
         <div className="controlrow">
