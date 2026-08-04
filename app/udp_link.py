@@ -1,11 +1,12 @@
 """Asyncio UDP link to the airborne daemon.
 
-The socket is unbound to any single remote so the login probe can try several
-candidate drone IPs on one socket and send to whichever one accepts. Incoming
-telemetry is cached (for health checks and priming new clients) and handed to a
-callback (the WebSocket hub's broadcast). A probe awaits the first telemetry from
-a specific IP, which only arrives if that drone accepted the token — the login
-authentication primitive.
+The session socket is unbound to any single remote so it can talk to whichever
+candidate drone accepted the login. Incoming telemetry is cached (for health
+checks and priming new clients) and handed to a callback (the WebSocket hub's
+broadcast).
+
+Login probes do NOT use that socket — see ``UdpLink.probe`` for why using it made
+the password check meaningless.
 """
 from __future__ import annotations
 
@@ -43,8 +44,6 @@ class UdpLink:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._latest: dict[str, Any] | None = None
         self._latest_monotonic: float = 0.0
-        # probe waiters: source-IP -> futures resolved on the next telemetry from it
-        self._waiters: list[tuple[str, asyncio.Future[bool]]] = []
 
     async def start(self) -> None:
         self._loop = asyncio.get_running_loop()
@@ -66,21 +65,47 @@ class UdpLink:
     async def probe(self, ip: str, token: str, timeout: float) -> bool:
         """Send a token-bearing heartbeat to ``ip`` and await a telemetry reply.
 
-        Returns True only if the drone at ``ip`` accepted the token (the drone
-        never replies to a sender whose token it rejects), so this doubles as the
-        password check.
+        Returns True only if the drone at ``ip`` accepted this specific token.
+
+        The probe deliberately runs on its own short-lived socket rather than the
+        session socket. The daemon records a return address for every packet whose
+        token it accepts, and then streams telemetry to every address it has
+        recorded — for as long as it keeps running. So on the long-lived session
+        socket "telemetry arrived" stops meaning "the token was accepted" the
+        moment any correct login has happened in this process's lifetime: the
+        drone is already streaming to that port, and every later probe sees a
+        reply no matter what token it sent. That made the login gate accept any
+        password, handing the operator a cockpit with live telemetry and video but
+        no control authority at all, because the aircraft then rejected every
+        command packet as a bad token.
+
+        A freshly bound port has never been recorded by the daemon, so a reply to
+        it can only mean this probe's token was accepted.
         """
-        if self._loop is None:
-            return False
-        fut: asyncio.Future[bool] = self._loop.create_future()
-        self._waiters.append((ip, fut))
+        loop = self._loop or asyncio.get_running_loop()
+        fut: asyncio.Future[bool] = loop.create_future()
+
+        class _ProbeProtocol(asyncio.DatagramProtocol):
+            def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
+                if addr[0] == ip and not fut.done():
+                    fut.set_result(True)
+
+            def error_received(self, exc: Exception) -> None:  # pragma: no cover
+                log.debug("probe socket error: %s", exc)
+
+        transport, _ = await loop.create_datagram_endpoint(
+            _ProbeProtocol, local_addr=(self._bind_host, 0)
+        )
         try:
-            self.send({"t": "hb", "token": token}, (ip, self._port))
+            transport.sendto(
+                json.dumps({"t": "hb", "token": token}, separators=(",", ":")).encode("utf-8"),
+                (ip, self._port),
+            )
             return await asyncio.wait_for(fut, timeout)
         except asyncio.TimeoutError:
             return False
         finally:
-            self._waiters = [w for w in self._waiters if w[1] is not fut]
+            transport.close()
 
     @property
     def latest_telemetry(self) -> dict[str, Any] | None:
@@ -103,9 +128,6 @@ class UdpLink:
             return
         self._latest = msg
         self._latest_monotonic = time.monotonic()
-        for ip, fut in self._waiters:
-            if ip == addr[0] and not fut.done():
-                fut.set_result(True)
         result = self._on_telemetry(msg)
         if asyncio.iscoroutine(result) and self._loop is not None:
             self._loop.create_task(result)
