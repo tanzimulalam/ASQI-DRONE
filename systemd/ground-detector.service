@@ -5,6 +5,11 @@ After=docker.service network-online.target
 Requires=docker.service
 Wants=network-online.target
 
+# Rate limiting lives in [Unit]: systemd ignores these in [Service]
+# ("Unknown key name ... ignoring"), which silently disables it.
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
 [Service]
 Type=simple
 # Runs as root because it drives docker directly. Everything it can reach is
@@ -22,8 +27,6 @@ Restart=always
 # Longer than the others: the first run after a model change builds a TensorRT
 # engine, which takes minutes and must not be mistaken for a crash loop.
 RestartSec=15
-StartLimitIntervalSec=600
-StartLimitBurst=5
 TimeoutStopSec=30
 StandardOutput=journal
 StandardError=journal
