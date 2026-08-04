@@ -60,7 +60,13 @@ if docker container inspect "$NAME" >/dev/null 2>&1; then
   docker rm "$NAME" >/dev/null
 fi
 
-exec docker run --rm -it \
+# Allocate a TTY only when we actually have one. This script also runs headless
+# (ssh without a pty, systemd), where docker refuses to start with -it:
+# "cannot attach stdin to a TTY-enabled container because stdin is not a terminal".
+TTY_FLAGS=()
+[ -t 0 ] && TTY_FLAGS=(-it)
+
+exec docker run --rm "${TTY_FLAGS[@]}" \
   --runtime nvidia \
   --network host \
   --name "$NAME" \
