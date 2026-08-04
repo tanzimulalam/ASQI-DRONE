@@ -64,9 +64,13 @@ you want to fly it rather than change it.
 4. **Arm gating** on the airborne side on top of `ARMING_CHECK`: fresh link, FC
    connected, allowed mode, throttle centered. Arm result is confirmed from HEARTBEAT.
 
-## Recommended Pixhawk param changes before flight (you apply these)
+## Pixhawk param changes before flight
+
+Items marked **Applied** were set on the vehicle and read back to confirm. The
+rest still need doing. Use `tools/params.py` rather than guessing.
+
 - **`SYSID_MYGCS = 250`** (named `MAV_GCS_SYSID` on ArduPilot 4.6+) — **required for
-  GUI sticks to work at all.** ArduPilot silently drops `RC_CHANNELS_OVERRIDE` from
+  GUI sticks to work at all.** **Applied 2026-08-04**, corrected from 255. ArduPilot silently drops `RC_CHANNELS_OVERRIDE` from
   any system id other than this one; the daemon sends from `DRONE_SRC_SYS` (250).
   Arm/mode/takeoff use `COMMAND_LONG` and are accepted from anyone, which is why
   they worked while the sticks didn't. Keeping 250 ≠ 255 also means a Mission
@@ -96,11 +100,13 @@ you want to fly it rather than change it.
   the transmitter regains stick authority within 3 s.
 - Confirm `RC_OPTIONS` bit 1 ("Ignore MAVLink Overrides") is **not** set, or the
   GUI sticks will never work regardless of sysid.
-- `FS_GCS_ENABLE = 1` — DONE 2026-08-04.
+- `FS_GCS_ENABLE = 1` — turn on GCS failsafe so loss of the MAVLink GCS link also
   triggers the FC's own failsafe (independent of our daemon). The daemon now
   heartbeats as the GCS at 1 Hz, so this watches the daemon process itself.
-- Consider `FENCE_ENABLE = 1` with a sane radius/altitude for early flights.
-- Confirm battery failsafe voltages are set for your pack.
+  **Applied 2026-08-04.**
+- `FENCE_ENABLE = 1` with a sane radius/altitude for early flights.
+  **Applied 2026-08-04** (type 7, action RTL, 300 m radius, 100 m ceiling).
+- Confirm battery failsafe voltages are set for your pack. **Not yet verified.**
 
 ---
 
