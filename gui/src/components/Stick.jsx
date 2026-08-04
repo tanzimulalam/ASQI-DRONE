@@ -15,8 +15,10 @@ const KNOB_HALF = 36; // knob is 72px; keep in sync with .knob in styles.css
  *   axisX     - key written from horizontal motion ("yaw" | "roll")
  *   axisY     - key written from vertical motion ("throttle" | "pitch")
  *   hint      - caption under the pad
+ *   disabled  - when true the pad ignores touch and holds its axes at zero, so
+ *               it cannot fight the keyboard for the same axes at 50 Hz
  */
-export default function Stick({ axesRef, axisX, axisY, hint }) {
+export default function Stick({ axesRef, axisX, axisY, hint, disabled = false }) {
   const padRef = useRef(null);
   const knobRef = useRef(null);
 
@@ -26,6 +28,12 @@ export default function Stick({ axesRef, axisX, axisY, hint }) {
     let active = null;
     let nx = 0;
     let ny = 0;
+
+    if (disabled) {
+      // Park the knob centered and leave the axes to whoever else owns them.
+      knob.style.transform = "translate(0px, 0px)";
+      return undefined;
+    }
 
     const radius = () => pad.clientWidth / 2 - KNOB_HALF;
 
@@ -86,17 +94,17 @@ export default function Stick({ axesRef, axisX, axisY, hint }) {
       axesRef.current[axisX] = 0;
       axesRef.current[axisY] = 0;
     };
-  }, [axesRef, axisX, axisY]);
+  }, [axesRef, axisX, axisY, disabled]);
 
   return (
-    <div className="side">
+    <div className={`side${disabled ? " disabled" : ""}`}>
       <div className="pad" ref={padRef}>
         <div className="ring" />
         <div className="ch" />
         <div className="cv" />
         <div className="knob" ref={knobRef} />
       </div>
-      <div className="stickhint">{hint}</div>
+      <div className="stickhint">{disabled ? "Keyboard has control" : hint}</div>
     </div>
   );
 }

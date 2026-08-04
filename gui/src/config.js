@@ -37,3 +37,16 @@ export const DETECT_ON_DEFAULT = (import.meta.env.VITE_DETECT_ON ?? "1") !== "0"
 // Hide the overlay if no `det` message arrives within this window (ms). Stale
 // boxes over live video are worse than no boxes.
 export const DET_STALE_MS = 2000;
+
+// ======= keyboard piloting =======
+// A held key is a step input, unlike a thumb easing a gimbal over. These tame it.
+//
+// Fraction of full stick a held key can reach. Deliberately below 1.0: the goal
+// is a flyable aircraft, not maximum authority. Raise it once the airframe is
+// trimmed and the operator is comfortable on the sticks.
+export const KEY_MAX_DEFLECTION = Number(import.meta.env.VITE_KEY_MAX ?? 0.6);
+// Time (ms) to ramp across the full deflection range when pressing a key...
+export const KEY_RISE_MS = 300;
+// ...and when releasing one. Shorter on purpose: returning to neutral should
+// never be the slow direction.
+export const KEY_FALL_MS = 150;
