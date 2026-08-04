@@ -7,15 +7,20 @@ function Dot({ cls }) {
 /**
  * A telemetry chip.
  *
+ * `drop` marks a chip as expendable when the row runs out of room: the band
+ * cannot wrap, so on a narrow screen the least critical readings are hidden
+ * rather than letting the tail (including the lab identity) get clipped.
+ * Lower numbers go first. See the topbar media queries in styles.css.
+ *
  * `w` reserves the value's width in `ch` units, sized for the widest string the
  * field can ever hold. Without it a chip grows when its number does — "30 ms"
  * becoming "1234 ms" widened the row, wrapped the bar onto a second line, and
  * resized the video underneath. Reserving the space means the bar never reflows
  * no matter what the numbers do.
  */
-function Chip({ k, w, children }) {
+function Chip({ k, w, drop, children }) {
   return (
-    <div className="chip">
+    <div className={`chip${drop ? ` drop-${drop}` : ""}`}>
       <span className="k">{k}</span>
       <span className="v" style={w ? { minWidth: `${w}ch` } : undefined}>
         {children}
@@ -64,9 +69,9 @@ export default function TelemetryBar({ tlm, conn, airborneIp }) {
       <Chip k="Batt" w={11}>
         {tlm ? `${tlm.batt_v} V${tlm.batt_pct >= 0 ? "  " + tlm.batt_pct + "%" : ""}` : "--"}
       </Chip>
-      <Chip k="Cur" w={7}>{tlm ? `${tlm.current_a} A` : "--"}</Chip>
+      <Chip k="Cur" w={7} drop={1}>{tlm ? `${tlm.current_a} A` : "--"}</Chip>
       <Chip k="Alt" w={8}>{tlm ? `${tlm.alt} m` : "--"}</Chip>
-      <Chip k="Spd" w={9}>{tlm ? `${tlm.gspeed} m/s` : "--"}</Chip>
+      <Chip k="Spd" w={9} drop={2}>{tlm ? `${tlm.gspeed} m/s` : "--"}</Chip>
       <Chip k="EKF" w={6}>
         {tlm ? (
           <>
@@ -85,8 +90,8 @@ export default function TelemetryBar({ tlm, conn, airborneIp }) {
         <Dot cls={hb.cls} />
         {hb.text}
       </Chip>
-      <Chip k="Link" w={8}>{tlm?.link_phase || "--"}</Chip>
-      {airborneIp && <Chip k="Drone" w={15}>{airborneIp}</Chip>}
+      <Chip k="Link" w={8} drop={2}>{tlm?.link_phase || "--"}</Chip>
+      {airborneIp && <Chip k="Drone" w={15} drop={1}>{airborneIp}</Chip>}
 
       <Brand />
     </div>
