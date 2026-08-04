@@ -1,0 +1,33 @@
+[Unit]
+Description=Airborne control daemon (MAVLink bridge to the Pixhawk)
+Documentation=https://github.com/mtsuissl/mtsuissl-airborne
+# The FC is a USB CDC device; without this the daemon can start before
+# /dev/ttyACM0 exists and exit immediately on a cold boot.
+After=network.target dev-ttyACM0.device
+Wants=dev-ttyACM0.device
+
+[Service]
+Type=simple
+User=john
+Group=john
+# Talking to /dev/ttyACM0 needs dialout.
+SupplementaryGroups=dialout
+WorkingDirectory=/home/john/Documents/mtsuissl-airborne
+# Holds DRONE_SESSION_TOKEN. Deliberately outside the repo and mode 0640 so the
+# shared secret is never committed and is not world-readable.
+EnvironmentFile=/etc/drone/drone.env
+ExecStart=/usr/bin/python3 -m airborne_daemon
+Restart=always
+RestartSec=3
+# A crash loop must not look like a healthy service: give up rather than thrash.
+StartLimitIntervalSec=120
+StartLimitBurst=8
+KillSignal=SIGINT
+# SIGINT releases the RC override and joins threads so the FC falls back to its
+# own failsafe cleanly. Give that time to finish before SIGKILL.
+TimeoutStopSec=15
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

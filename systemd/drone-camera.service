@@ -1,0 +1,26 @@
+[Unit]
+Description=Drone camera daemon (MJPEG stream on :8090)
+Documentation=https://github.com/mtsuissl/mtsuissl-airborne
+After=network.target
+
+[Service]
+Type=simple
+User=john
+Group=john
+# /dev/video* is root:video on JetPack.
+SupplementaryGroups=video
+WorkingDirectory=/home/john/Documents/mtsuissl-airborne
+Environment=CAM_DEVICE=auto
+Environment=CAM_WIDTH=640
+Environment=CAM_HEIGHT=480
+Environment=CAM_FPS=30
+ExecStart=/usr/bin/python3 -m camera_daemon
+Restart=always
+RestartSec=3
+StartLimitIntervalSec=120
+StartLimitBurst=8
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
