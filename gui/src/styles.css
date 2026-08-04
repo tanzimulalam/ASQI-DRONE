@@ -229,7 +229,7 @@ body::before {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 2.5fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2.8fr) minmax(0, 1fr);
   align-items: center;
   gap: var(--gap);
   padding: var(--gap);
@@ -254,6 +254,7 @@ body::before {
 .center {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   min-width: 0;
   min-height: 0;
   height: 100%;
@@ -273,9 +274,10 @@ body::before {
 
 .pad {
   position: relative;
-  /* Square, bounded by BOTH the column width and the available height, so it
-     never pushes the video out of the way on a short screen. */
-  width: min(100%, 46vh);
+  /* Square, bounded by the column width AND the available height, so it never
+     pushes the video out of the way on a short screen. The hard cap stops it
+     ballooning into an absurd dinner plate on a 4K panel. */
+  width: min(100%, 46vh, 460px);
   aspect-ratio: 1;
   background:
     radial-gradient(circle at 50% 42%, var(--panel3) 0%, var(--panel) 72%);
@@ -331,13 +333,16 @@ body::before {
 /* ------------------------------- video feed ------------------------------- */
 
 #videowrap {
-  flex: 1 1 auto;
-  min-height: 0;
-  /* Height comes from the flex row; width follows from the ratio. This is the
-     fix for the letterboxed-into-a-column problem. max-width keeps it honest
-     when the column is the tighter constraint. */
+  /* Width-driven, ratio-derived height. A flex item stretches on BOTH axes by
+     default, which silently defeats aspect-ratio and was what letterboxed the
+     4:3 feed into a tall column. Pinning flex-grow to 0 and taking width from
+     the column makes the ratio the thing that decides height, so the black box
+     hugs the video instead of framing it in bars. max-height keeps it inside
+     the viewport on short screens, where object-fit:contain takes over. */
+  flex: 0 0 auto;
+  width: 100%;
   aspect-ratio: 4 / 3;
-  max-width: 100%;
+  max-height: 100%;
   margin: 0 auto;
   position: relative;
   background: #000;
