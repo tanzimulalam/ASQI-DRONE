@@ -1,3 +1,5 @@
+import Brand from "./Brand.jsx";
+
 function Dot({ cls }) {
   return <span className={`dot ${cls}`} />;
 }
@@ -73,6 +75,7 @@ export default function TelemetryBar({ tlm, conn, airborneIp }) {
       </Chip>
       <Chip k="Link">{tlm?.link_phase || "--"}</Chip>
       {airborneIp && <Chip k="Drone">{airborneIp}</Chip>}
+      <Brand />
     </div>
   );
 }

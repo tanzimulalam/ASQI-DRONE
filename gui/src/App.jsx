@@ -13,6 +13,12 @@ import LoginOverlay from "./components/LoginOverlay.jsx";
 
 const NO_KEYS = new Set();
 
+/**
+ * Cockpit layout: the feed spans the top, and the controls sit in a band beneath
+ * it with a stick under each thumb and the command console between them. Putting
+ * the video above rather than between the sticks lets it use the full width,
+ * which is what a 4:3 feed on a landscape panel wants.
+ */
 export default function App() {
   const { axesRef, tlm, det, conn, sendCmd, authed, authBusy, authError, airborneIp, login } =
     useDroneLink();
@@ -59,40 +65,42 @@ export default function App() {
       <TakeoverBanner active={!tlm?.failsafe && !!tlm?.pilot_takeover} onResume={resume} />
 
       <div id="stage">
-        {/* LEFT: throttle (Y) + yaw (X) — self-centering, center = hold */}
-        <Stick
-          axesRef={axesRef}
-          axisX="yaw"
-          axisY="throttle"
-          hint="Throttle ↕ · Yaw ↔ — center = hold"
-          disabled={sticksOff}
-        />
+        <VideoPanel det={det} />
 
-        <div className="center">
-          <VideoPanel det={det} />
-          <CommandDeck
-            mode={tlm?.mode}
-            onSetMode={setMode}
-            onDisarm={disarm}
-            onTakeoff={() => setTakeoffOpen(true)}
+        <div className="controlrow">
+          {/* LEFT: throttle (Y) + yaw (X) — self-centering, center = hold */}
+          <Stick
+            axesRef={axesRef}
+            axisX="yaw"
+            axisY="throttle"
+            hint="Throttle ↕ · Yaw ↔"
+            disabled={sticksOff}
+          />
+
+          <div className="console">
+            <CommandDeck
+              mode={tlm?.mode}
+              onSetMode={setMode}
+              onDisarm={disarm}
+              onTakeoff={() => setTakeoffOpen(true)}
+            />
+            <ControlMode
+              mode={controlMode}
+              onChange={setControlMode}
+              held={keyboardActive ? heldKeys : NO_KEYS}
+            />
+          </div>
+
+          {/* RIGHT: pitch (Y) + roll (X) — self-centering */}
+          <Stick
+            axesRef={axesRef}
+            axisX="roll"
+            axisY="pitch"
+            hint="Pitch ↕ · Roll ↔"
+            disabled={sticksOff}
           />
         </div>
-
-        {/* RIGHT: pitch (Y) + roll (X) — self-centering */}
-        <Stick
-          axesRef={axesRef}
-          axisX="roll"
-          axisY="pitch"
-          hint="Pitch ↕ · Roll ↔ — self-centering"
-          disabled={sticksOff}
-        />
       </div>
-
-      <ControlMode
-        mode={controlMode}
-        onChange={setControlMode}
-        held={keyboardActive ? heldKeys : NO_KEYS}
-      />
 
       <div id="evt">{lastEvent ? `${lastEvent.kind}: ${lastEvent.msg}` : ""}</div>
 
