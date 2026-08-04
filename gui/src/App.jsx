@@ -8,6 +8,7 @@ import Stick from "./components/Stick.jsx";
 import VideoPanel from "./components/VideoPanel.jsx";
 import CommandDeck from "./components/CommandDeck.jsx";
 import ControlMode from "./components/ControlMode.jsx";
+import { DetectionList, EventLog } from "./components/SidePanels.jsx";
 import TakeoffModal from "./components/TakeoffModal.jsx";
 import LoginOverlay from "./components/LoginOverlay.jsx";
 
@@ -65,7 +66,11 @@ export default function App() {
       <TakeoverBanner active={!tlm?.failsafe && !!tlm?.pilot_takeover} onResume={resume} />
 
       <div id="stage">
-        <VideoPanel det={det} />
+        <div className="videostage">
+          <DetectionList det={det} />
+          <VideoPanel det={det} />
+          <EventLog tlm={tlm} />
+        </div>
 
         <div className="controlrow">
           {/* LEFT: throttle (Y) + yaw (X) — self-centering, center = hold */}

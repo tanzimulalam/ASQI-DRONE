@@ -408,6 +408,142 @@ body::before {
 
 /* ------------------------------- video feed ------------------------------- */
 
+/* ---------------------- feed row: panel | video | panel --------------------- */
+
+.videostage {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: clamp(150px, 17vw, 290px) minmax(0, 1fr) clamp(150px, 17vw, 290px);
+  gap: var(--gap);
+}
+
+.sidepanel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(24, 34, 49, 0.55) 0%, rgba(9, 14, 21, 0.55) 100%);
+  overflow: hidden;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap-sm);
+  padding: 0.5em 0.75em;
+  font-size: var(--fs-label);
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line-soft);
+  background: rgba(63, 169, 255, 0.05);
+}
+
+.panel-count {
+  font-family: var(--num);
+  color: var(--accent);
+  letter-spacing: 0;
+}
+
+.panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0.45em 0.55em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3em;
+}
+
+.panel-empty {
+  font-size: var(--fs-label);
+  color: var(--faint);
+  font-style: italic;
+  padding: 0.3em 0.2em;
+}
+
+/* detections */
+.detrow {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.4em;
+  font-size: var(--fs-label);
+}
+
+.detswatch {
+  width: 0.7em;
+  height: 0.7em;
+  border-radius: 2px;
+  flex: none;
+}
+
+.detname {
+  color: var(--txt);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detscore {
+  font-family: var(--num);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.detbar {
+  grid-column: 1 / -1;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+  margin-bottom: 0.25em;
+}
+
+.detbarfill {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+}
+
+/* events */
+.evtrow {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 0.25em 0.35em;
+  border-left: 2px solid var(--line);
+  border-radius: 0 4px 4px 0;
+  background: rgba(255, 255, 255, 0.02);
+  font-size: var(--fs-label);
+}
+
+.evtkind {
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.evtmsg {
+  color: var(--faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.evt-armed { border-left-color: var(--bad); }
+.evt-armed .evtkind { color: #ff9d9d; }
+.evt-disarmed { border-left-color: var(--ok); }
+.evt-disarmed .evtkind { color: #86f0bd; }
+.evt-failsafe { border-left-color: var(--warn); }
+.evt-failsafe .evtkind { color: #ffd79a; }
+
 /* The area the feed is allowed to occupy. Declared as a size container so the
    video box below can be sized against THIS box's width and height. */
 .videoarea {
@@ -964,6 +1100,12 @@ button.cmd:active { filter: brightness(1.3); transform: translateY(1px); }
 /* ================================ narrow ==================================
    Too tight for stick | console | stick on one line. Drop the console to its own
    row underneath, keeping a stick under each thumb. */
+
+@media (max-width: 1100px) {
+  /* The feed needs the whole width before the panels are worth keeping. */
+  .videostage { grid-template-columns: minmax(0, 1fr); }
+  .sidepanel { display: none; }
+}
 
 @media (max-width: 820px) {
   .controlrow {
