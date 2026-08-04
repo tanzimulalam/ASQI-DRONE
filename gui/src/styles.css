@@ -902,9 +902,22 @@ button.cmd:active { filter: brightness(1.3); transform: translateY(1px); }
   .pad { width: min(100%, 30vh); }
 }
 
-/* Short and wide (the 800x480 / 1024x600 panels): reclaim vertical space. */
+/* Short and wide (the 800x480 / 1024x600 panels): every vertical pixel spent on
+   chrome is a pixel off the video, so the key map collapses to bare caps. */
 @media (max-height: 620px) {
   .keynote { display: none; }
   .keycap .sub { display: none; }
   #evt { display: none; }
+
+  /* Keep the W-over-ASD cross intact: it is what makes the mapping readable at
+     a glance. Only the surrounding padding and cap size give way. */
+  .ctrlmode { padding: 2px var(--gap); gap: var(--gap-sm); }
+  .keymap { gap: var(--gap-sm); }
+  .keypad { gap: 2px; }
+  .keypad-label { margin-bottom: 0; }
+  .keyrow { gap: 3px; }
+  .keycap {
+    width: clamp(26px, 2.6vw, 38px);
+    height: clamp(20px, 2vw, 30px);
+  }
 }
