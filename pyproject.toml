@@ -1,0 +1,15 @@
+[project]
+name = "drone-ground-bridge"
+version = "1.0.0"
+description = "FastAPI bridge between the web GUI and the airborne daemon"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.110,<1.0",
+    "uvicorn[standard]>=0.29",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

@@ -1,0 +1,6 @@
+# Ground bridge runtime (ground-side Jetson). Install with:
+#   pip3 install -r requirements.txt
+fastapi>=0.110,<1.0
+uvicorn[standard]>=0.29
+pydantic>=2.6
+pydantic-settings>=2.2
