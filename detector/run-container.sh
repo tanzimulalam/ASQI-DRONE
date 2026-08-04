@@ -40,14 +40,37 @@ fi
 # Once the .engine file exists this doesn't matter — runtime needs far less.
 # (-ipath: env names are lowercase 'ssd-mobilenet-v2', dirs are 'SSD-Mobilenet-v2')
 NETWORK="${DET_NETWORK:-ssd-mobilenet-v2}"
+avail_now() { awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo; }
+
 if [ -z "$(find "$JI_DIR/data/networks" -ipath "*${NETWORK}*" -name '*.engine' -print -quit 2>/dev/null)" ]; then
-  avail_mb=$(awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo)
-  if [ "${avail_mb:-0}" -lt 4500 ]; then
-    echo "WARNING: no cached TensorRT engine for $NETWORK yet and only ${avail_mb} MB RAM available." >&2
+  if [ "$(avail_now)" -lt 4500 ]; then
+    echo "WARNING: no cached TensorRT engine for $NETWORK yet and only $(avail_now) MB RAM available." >&2
     echo "         The first-run engine build may fail with an NvMap/cudnn OOM." >&2
     echo "         Close the browser (or: sudo systemctl isolate multi-user.target)" >&2
     echo "         for the one-time build, then re-run." >&2
   fi
+fi
+
+# Even with the engine cached, loading it still needs a few hundred MB of NvMap,
+# and NvMap cannot use swap. Started at boot this races the desktop session, and
+# losing that race is not graceful: TensorRT aborts the process *after* the HTTP
+# thread has already bound :8091, so the port stays open with nothing behind it
+# and the service looks alive while being dead.
+#
+# So wait for headroom instead of gambling. Bounded, because a ground station
+# that never reaches the threshold should still try rather than hang forever.
+DET_MIN_AVAIL_MB="${DET_MIN_AVAIL_MB:-1200}"
+DET_MEM_WAIT_S="${DET_MEM_WAIT_S:-90}"
+waited=0
+while [ "$(avail_now)" -lt "$DET_MIN_AVAIL_MB" ] && [ "$waited" -lt "$DET_MEM_WAIT_S" ]; do
+  [ "$waited" -eq 0 ] && echo "waiting for $DET_MIN_AVAIL_MB MB available (have $(avail_now) MB)..." >&2
+  sleep 5
+  waited=$((waited + 5))
+done
+if [ "$(avail_now)" -lt "$DET_MIN_AVAIL_MB" ]; then
+  echo "proceeding after ${waited}s with only $(avail_now) MB available; load may fail" >&2
+elif [ "$waited" -gt 0 ]; then
+  echo "memory available after ${waited}s: $(avail_now) MB" >&2
 fi
 
 # Remove a leftover container from an earlier run of this script (the cache now
