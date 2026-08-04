@@ -1,17 +1,25 @@
-# drone-test — web transmitter for Pixhawk 6C / ArduCopter
+# mtsuissl-airborne — drone-side control daemon
 
-A browser-based transmitter (sticks + arm/disarm + telemetry) for a Holybro
-X500-class quad. Two Jetsons: a **ground** one serves the GUI, a **drone** one is
-wired to the Pixhawk 6C over USB and is the hardened control boundary.
+ASQI Lab (Autonomous Systems & Quantum Intelligence Laboratory), Middle Tennessee
+State University.
+
+The flight-side half of a browser-based transmitter (sticks + arm/disarm +
+telemetry) for a Holybro X500-class quad. Two Jetsons: a **ground** one serves the
+GUI, a **drone** one is wired to the Pixhawk 6C over USB and is the hardened
+control boundary.
+
+Ground-side code, GUI and operator documentation live in
+[`mtsuissl-ground`](https://github.com/mtsuissl/mtsuissl-ground). Start there if
+you want to fly it rather than change it.
 
 ```
- Browser (phone/laptop)
+ Browser (ground Jetson screen, or a phone on the same network)
     │  WebSocket JSON
     ▼
- GROUND Jetson ──────────  ground/ground_bridge.py  (serves GUI + WS↔UDP relay)
+ GROUND Jetson ──────────  mtsuissl-ground: app/ (GUI + WS↔UDP relay)
     │  UDP 50 Hz, port 14650
     ▼
- DRONE Jetson  ──────────  airborne/airborne_daemon.py  (validation + MAVLink)
+ DRONE Jetson  ──────────  airborne_daemon (validation + MAVLink)  [this repo]
     │  MAVLink, USB /dev/ttyACM0
     ▼
  Pixhawk 6C / ArduCopter
@@ -86,12 +94,49 @@ wired to the Pixhawk 6C over USB and is the hardened control boundary.
 
 # Setup
 
+## Normal operation: it starts itself
+
+Both daemons run under systemd and come up on boot. There is nothing to launch by
+hand, and the hotspot starts itself too.
+
+```bash
+sudo ./systemd/install.sh          # idempotent, safe to re-run after a pull
+
+systemctl status drone-airborne drone-camera
+journalctl -u drone-airborne -f
+```
+
+The installer:
+
+* installs `drone-airborne.service` and `drone-camera.service`
+* creates `/etc/drone/drone.env` (mode 0640) holding `DRONE_SESSION_TOKEN`, so the
+  shared secret is never committed and is not world readable
+* installs a NetworkManager dispatcher at
+  `/etc/NetworkManager/dispatcher.d/90-drone-hotspot`
+* sets the `drone-hotspot` connection to autoconnect
+
+**Why the dispatcher exists.** Regulatory domain and TX power are runtime-only
+state. A plain `nmcli con up` does not restore them, so without it the AP silently
+comes back on the world-domain fallback (`country 00`, about 14 dBm instead of 20)
+after every reboot, costing a large part of the usable range. The dispatcher
+re-applies both whenever the hotspot comes up. Check it with
+`journalctl -t drone-hotspot`.
+
+**Do not raise TX power above 20 dBm.** This Realtek driver accepts and reports
+30 dBm without regard to the regulatory database, which would put the lab outside
+FCC limits for 2.4 GHz.
+
+## Running by hand (development)
+
 Both sides are configured entirely through environment variables — no source
 edits. Pick one shared secret and export it as the token on both machines.
 
 Each side takes its settings as command-line flags (which override the matching
 `DRONE_*` / `GROUND_*` env vars, which override defaults). Use `--help` for the
 full list.
+
+Stop the service first, or the two will fight over UDP 14650:
+`sudo systemctl stop drone-airborne`
 
 ### Drone (airborne) Jetson — this box
 ```bash
@@ -296,7 +341,11 @@ mtsuissl-airborne/                drone-side (stdlib + pymavlink; OpenCV only fo
     capture.py        capture thread, freshest-frame publishing, JPEG passthrough
     server.py         multipart/x-mixed-replace HTTP server
     service.py        orchestration, signals, graceful shutdown
-  tests/              pytest: rc, protocol, failsafe, camera (43 tests)
+  systemd/                        boot-time setup (install.sh installs all of it)
+    drone-airborne.service        control daemon unit
+    drone-camera.service          camera daemon unit
+    90-drone-hotspot              NM dispatcher: restores regdomain + TX power
+  tests/              pytest: rc, protocol, failsafe, camera, controller (81 tests)
 
 mtsuissl-ground/                  ground-side FastAPI bridge
   app/
