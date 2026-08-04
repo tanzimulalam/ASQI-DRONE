@@ -26,7 +26,18 @@ comma-separated; defaults to `GROUND_AIRBORNE_IP`) by sending a token-bearing
 heartbeat and waiting for telemetry. Because the airborne daemon only records a
 return address — and thus only sends telemetry — for packets whose token it
 accepts, a reply proves the password is correct **and** identifies which drone it
-belongs to. Wrong password → no drone replies → `auth_fail`. The password/token is
+belongs to.
+
+> ⚠ **The probe must be sent from a freshly bound UDP port.** The daemon keeps
+> streaming telemetry to *every* address it has ever accepted a packet from, for
+> as long as it runs. Probing from a socket the daemon has already recorded means
+> a reply arrives no matter what token was sent, so the check silently degrades
+> into "is this drone talking to us" and **any password is accepted**. That was a
+> real bug: the operator got a cockpit with live telemetry and video but zero
+> control authority, because the aircraft then rejected every command packet as a
+> bad token. See `test_auth_probe.py` in the ground repo.
+
+Wrong password → no drone replies → `auth_fail`. The password/token is
 never sent to the drone as anything other than the standard per-packet `token`,
 and the `/camera` proxy is gated the same way (no login → 502). Telemetry and
 control flow only after `auth_ok`; the session is dropped when the last client
