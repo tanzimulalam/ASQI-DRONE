@@ -116,7 +116,38 @@ class MavlinkLink:
                 1,
             )
 
+    def request_message_interval(self, msg_id: int, hz: float) -> None:
+        with self._send_lock:
+            self._c.mav.command_long_send(
+                self._c.target_system, self._c.target_component,
+                mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, 0,
+                msg_id, 1e6 / hz, 0, 0, 0, 0, 0,
+            )
+
     # -- transmit (all serialized) ----------------------------------------- #
+    def send_heartbeat(self) -> None:
+        with self._send_lock:
+            self._c.mav.heartbeat_send(
+                mavutil.mavlink.MAV_TYPE_GCS, mavutil.mavlink.MAV_AUTOPILOT_INVALID, 0, 0, 0
+            )
+
+    def heartbeat_loop(self, stop: threading.Event) -> None:
+        """Announce ourselves as the GCS at 1 Hz.
+
+        ArduPilot only honors RC_CHANNELS_OVERRIDE from the system id configured in
+        SYSID_MYGCS (MAV_GCS_SYSID on 4.6+); heartbeating as that GCS also lets the
+        FC's own GCS failsafe (FS_GCS_ENABL) back up this daemon's watchdog if the
+        whole process dies mid-flight.
+        """
+        log.info("GCS heartbeat loop started (1 Hz, sysid %d)", self._s.source_system)
+        while not stop.is_set():
+            try:
+                self.send_heartbeat()
+            except Exception:  # pragma: no cover - transport hiccup; RX loop reports loss
+                log.debug("heartbeat send failed", exc_info=True)
+            stop.wait(1.0)
+        log.info("GCS heartbeat loop stopped")
+
     def send_rc_override(self, ch1: int, ch2: int, ch3: int, ch4: int) -> None:
         with self._send_lock:
             self._c.mav.rc_channels_override_send(
@@ -191,6 +222,12 @@ class MavlinkLink:
             self._vehicle.update(rel_alt_m=msg.relative_alt / 1000.0)
         elif mtype == "VFR_HUD":
             self._vehicle.update(ground_speed=msg.groundspeed)
+        elif mtype == "RC_CHANNELS":
+            # NOTE: channels the daemon overrides (1-4) echo the override values
+            # here; only non-overridden channels carry the physical receiver.
+            self._vehicle.update(
+                rc_in=tuple(getattr(msg, f"chan{i}_raw") for i in range(1, min(msg.chancount, 16) + 1))
+            )
         elif mtype == "EKF_STATUS_REPORT":
             need = (
                 mavutil.mavlink.EKF_ATTITUDE

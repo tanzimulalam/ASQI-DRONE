@@ -42,6 +42,7 @@ class VehicleSnapshot:
     ground_speed: float
     ekf_ok: bool
     statustext: str
+    rc_in: tuple[int, ...]
 
 
 class VehicleState:
@@ -60,6 +61,7 @@ class VehicleState:
         self._ground_speed = 0.0
         self._ekf_ok = False
         self._statustext = ""
+        self._rc_in: tuple[int, ...] = ()  # raw receiver PWM from RC_CHANNELS (ch1..chN)
 
     def update_heartbeat(self, *, armed: bool, mode_num: int) -> None:
         with self._lock:
@@ -95,6 +97,7 @@ class VehicleState:
                 ground_speed=round(self._ground_speed, 2),
                 ekf_ok=self._ekf_ok,
                 statustext=self._statustext,
+                rc_in=self._rc_in,
             )
 
 

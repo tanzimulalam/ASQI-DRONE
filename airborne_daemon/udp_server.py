@@ -145,6 +145,7 @@ class UdpServer:
             ctrl_age_ms=min(ctl.age_ms, 99999),
             link_phase=self._controller.link_phase.value,
             failsafe=self._controller.failsafe_latched,
+            pilot_takeover=self._controller.pilot_takeover,
             allowed_modes=list(self._s.allowed_pilot_modes),
             statustext=veh.statustext,
             events=self._events.recent(5),

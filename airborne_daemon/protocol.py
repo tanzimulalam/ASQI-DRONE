@@ -157,6 +157,7 @@ class Telemetry:
     ctrl_age_ms: int
     link_phase: str
     failsafe: bool
+    pilot_takeover: bool
     allowed_modes: list[str]
     statustext: str
     events: list[dict[str, Any]] = field(default_factory=list)

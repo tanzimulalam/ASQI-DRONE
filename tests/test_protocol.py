@@ -93,7 +93,7 @@ def test_telemetry_roundtrips_to_json() -> None:
         ts=1, connected=True, armed=False, mode="LOITER", mode_num=5, hb_age_ms=20,
         gps_fix=3, sats=18, batt_v=15.8, batt_pct=87, current_a=2.1, alt=1.2,
         gspeed=0.3, ekf_ok=True, ctrl_age_ms=18, link_phase="nominal", failsafe=False,
-        allowed_modes=["LOITER"], statustext="", events=[], proto=1,
+        pilot_takeover=False, allowed_modes=["LOITER"], statustext="", events=[], proto=1,
     )
     decoded = json.loads(tlm.to_json())
     assert decoded["t"] == "tlm"

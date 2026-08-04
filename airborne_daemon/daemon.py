@@ -12,6 +12,8 @@ import signal
 import threading
 from dataclasses import dataclass, replace
 
+from pymavlink import mavutil
+
 from . import __version__
 from .controller import Controller
 from .logging_conf import configure_logging
@@ -59,11 +61,15 @@ class Daemon:
 
         self._link.read_calibration()
         self._link.request_data_streams(hz=10)
+        if self._s.pilot_takeover_channels:
+            # tighten stick-touch takeover latency: RC_CHANNELS at 20 Hz instead of 10
+            self._link.request_message_interval(mavutil.mavlink.MAVLINK_MSG_ID_RC_CHANNELS, 20.0)
         self._udp.bind()
 
         self._install_signal_handlers()
 
         self._spawn("mavlink-rx", self._link.rx_loop)
+        self._spawn("gcs-heartbeat", self._link.heartbeat_loop)
         self._spawn("udp-rx", self._udp.rx_loop)
         self._spawn("telemetry", self._udp.telemetry_loop)
         self._spawn("cmd-worker", self._controller.run_command_worker)

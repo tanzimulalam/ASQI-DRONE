@@ -45,8 +45,40 @@ wired to the Pixhawk 6C over USB and is the hardened control boundary.
    connected, allowed mode, throttle centered. Arm result is confirmed from HEARTBEAT.
 
 ## Recommended Pixhawk param changes before flight (you apply these)
+- **`SYSID_MYGCS = 250`** (named `MAV_GCS_SYSID` on ArduPilot 4.6+) — **required for
+  GUI sticks to work at all.** ArduPilot silently drops `RC_CHANNELS_OVERRIDE` from
+  any system id other than this one; the daemon sends from `DRONE_SRC_SYS` (250).
+  Arm/mode/takeoff use `COMMAND_LONG` and are accepted from anyone, which is why
+  they worked while the sticks didn't. Keeping 250 ≠ 255 also means a Mission
+  Planner laptop (255) can stay connected to monitor without its joystick ever
+  injecting overrides.
+- **Stick-touch takeover (no switch).** The safety pilot takes the aircraft the
+  moment they move the transmitter sticks. ArduPilot can't report the physical
+  sticks on ch1-4 while they're overridden (RC_CHANNELS echoes the override), so
+  the transmitter must **mirror roll/pitch/throttle/yaw onto spare channels** via
+  its mixer (e.g. ch9-12; on EdgeTX/OpenTX add mixes ch9←Ail, ch10←Ele, ch11←Thr,
+  ch12←Rud). Then run the daemon with `DRONE_PILOT_TAKEOVER_CHANNELS=9,10,11,12`.
+  The daemon baselines those channels when it starts piloting and releases the
+  override the instant any of them moves > `DRONE_PILOT_TAKEOVER_DZ_US` (50 µs
+  default). Takeover **latches**: the GUI sticks stay dead (and the GUI-link
+  failsafe won't fire over the pilot's head) until the web operator presses
+  RESUME — only do that after the safety pilot centers their sticks and agrees.
+  Takeover latency ≈ 50-120 ms (RC_CHANNELS at 20 Hz + one 50 Hz control tick).
+- The transmitter **mode switch is a second takeover path**: ch5 is never
+  overridden, so flipping to the Stabilize position always works. The daemon sees
+  the disallowed mode and releases its override on the next control tick
+  (≤ ~1 s, bounded by the FC's 1 Hz heartbeat).
+- **Firmware-native alternative (not yet in a stable release):** ArduPilot master
+  has `RC_OPTIONS` bit 14 (`CLEAR_OVERRIDES_BY_RC`) — the FC itself drops MAVLink
+  overrides on pilot stick input, no mirrored channels needed. It is absent from
+  the 4.6/4.7 release branches; revisit when it ships in stable.
+- `RC_OVERRIDE_TIME = 3` (already set) — backstop: if the daemon dies silently,
+  the transmitter regains stick authority within 3 s.
+- Confirm `RC_OPTIONS` bit 1 ("Ignore MAVLink Overrides") is **not** set, or the
+  GUI sticks will never work regardless of sysid.
 - `FS_GCS_ENABLE = 1` — turn on GCS failsafe so loss of the MAVLink GCS link also
-  triggers the FC's own failsafe (independent of our daemon).
+  triggers the FC's own failsafe (independent of our daemon). The daemon now
+  heartbeats as the GCS at 1 Hz, so this watches the daemon process itself.
 - Consider `FENCE_ENABLE = 1` with a sane radius/altitude for early flights.
 - Confirm battery failsafe voltages are set for your pack.
 
@@ -63,7 +95,7 @@ full list.
 
 ### Drone (airborne) Jetson — this box
 ```bash
-cd ~/Documents/drone-test/airborne
+cd ~/Documents/mtsuissl-airborne
 python3 -m airborne_daemon --session-token 'a-long-shared-secret'
 # other flags: --udp-port, --mav-device, --log-level DEBUG   (see --help)
 ```
@@ -73,7 +105,7 @@ Run the tests with `python3 -m pytest`.
 
 ### Ground Jetson (serves the GUI)
 ```bash
-cd ~/Documents/drone-test/ground
+cd ~/Documents/mtsuissl-ground
 pip3 install -r requirements.txt                 # or: pip3 install --user -r requirements.txt
 # Pass the drone's IP as the first argument (the token must match the drone):
 python3 -m app 10.131.237.193 --token 'a-long-shared-secret'
@@ -86,18 +118,104 @@ Jetson. Health check: `curl http://<ground-ip>:8000/healthz`.
 > **Which drone IP?** For bench testing over the wire, use `10.131.237.193`. For
 > flight, use the drone's hotspot IP (e.g. `10.42.0.1`) — see the link section.
 
-> **Copy the repo to the ground Jetson** (it currently lives on the drone Jetson):
-> `scp -r ~/Documents/drone-test john@10.131.237.193:~/Documents/`
+> **Copy the ground repo to the ground Jetson:**
+> `scp -r ~/Documents/mtsuissl-ground john@10.131.237.193:~/Documents/`
 
 ### Architecture
 ```
+CONTROL
 browser ─WebSocket(JSON)/8000─▶ ground: FastAPI app (app/) ─UDP(JSON)/14650─▶ drone: airborne_daemon (pkg)
-        ◀──────telemetry──────                              ◀──────telemetry──────
+        ◀─ telemetry + boxes ──                              ◀──── telemetry ─────
+
+VIDEO + DETECTION
+browser ◀─ /camera/stream.mjpg ─ ground bridge (proxy) ◀─ MJPEG/8090 ─ drone: camera_daemon ◀─ USB webcam
+                                                        │
+                        ground: detector/ (TensorRT) ◀───┘  boxes ─▶ bridge ─▶ browser (`det` over /ws)
 ```
 The ground bridge injects the session token server-side (never in the browser),
 validates every message with pydantic, and fans telemetry to all clients with
 per-client backpressure. The airborne daemon re-validates everything and owns the
 arm policy, RC scaling, and failsafe. Wire contract: `PROTOCOL.md` (proto v1).
+
+Video and detection are entirely separate from the control path: nothing in them
+can stall the 50 Hz uplink, and both can be down while the aircraft still flies.
+
+---
+
+# Video and object detection
+
+Two optional services, one per Jetson. Neither is required to fly.
+
+### Drone: `camera_daemon` (MJPEG streamer, port 8090)
+
+```bash
+cd ~/Documents/mtsuissl-airborne
+python3 -m camera_daemon          # auto-detects the webcam; --help for flags
+```
+
+Auto-detects a working `/dev/video*` by actually requiring frames from it, then
+forwards the camera's **own JPEG frames without decoding them**. Check what it
+picked with `curl http://<drone-ip>:8090/healthz`:
+
+```json
+{"connected":true,"device":"/dev/video0","backend":"gstreamer","passthrough":true,"fps":30.0}
+```
+
+`backend` and `passthrough` are the two fields worth reading. `gstreamer` +
+`passthrough: true` is the good path — frames come off the camera already encoded
+and are never re-encoded.
+
+| Env | Default | Notes |
+| --- | --- | --- |
+| `CAM_BACKEND` | `auto` | `gstreamer` \| `v4l2` \| `auto`. GStreamer keeps only the newest frame (`appsink drop=true max-buffers=1`) instead of letting stale ones age in V4L2's buffer ring, so it is the lower-latency path. `auto` falls back to V4L2 per device. |
+| `CAM_GST_PIPELINE` | — | Full pipeline override; must end in an `appsink`. Escape hatch for odd cameras, or to transcode on the Jetson's JPEG engine. |
+| `CAM_DEVICE` | `auto` | Force one, e.g. `/dev/video1`. |
+| `CAM_WIDTH` / `CAM_HEIGHT` / `CAM_FPS` | 640/480/30 | Lower `CAM_FPS` first if the link is tight. |
+| `CAM_JPEG_QUALITY` | 80 | **Only applies when re-encoding.** With passthrough on (the default) the camera picks the quality and this does nothing. |
+
+> The Orin Nano has **no hardware video encoder** (NVENC was dropped; Orin NX and
+> AGX keep it). `nvjpegenc` and the GPU are still there, so JPEG and inference are
+> hardware-accelerated, but H.264 would have to be software.
+
+### Ground: `detector/` (TensorRT boxes, port 8091)
+
+```bash
+cd ~/Documents/mtsuissl-ground
+sudo ./detector/run-container.sh
+```
+
+Runs [jetson-inference](https://github.com/dusty-nv/jetson-inference)'s detectNet
+in the dusty-nv container, consuming the drone's MJPEG feed and serving boxes as
+JSON. The bridge long-polls it and forwards them to browsers over the WebSocket
+they already hold, so the browser needs no model and no WebGL — which matters
+because **Chromium on the Jetson has no hardware WebGL at all**, and the previous
+in-browser TensorFlow.js path took ~54 s to load and then ran at ~1 fps.
+
+Inference is slower than the camera, so the detector always works on the *newest*
+frame and drops the backlog; boxes describe the scene now, not several seconds
+ago. First run downloads the model (~68 MB) and builds the TensorRT engine —
+**several minutes** — both cached on the **host** in the jetson-inference clone's
+`data/` dir (mounted into the container, the same layout dusty-nv's own
+`docker/run.sh` uses), so the container itself is disposable. The launcher expects
+the clone at `~/Documents/jetson-inference`; override with `JETSON_INFERENCE_DIR`.
+
+> Don't launch via the repo's own `docker/run.sh` on this host: it derives the
+> image tag from the L4T version (`r36.4.7`), which was never published — only
+> `r36.2.0` and `r36.3.0` exist. Our launcher pins `r36.3.0`. It also passes no
+> camera device into the container: the detector reads the drone's MJPEG feed
+> over the network (`DET_STREAM_URL`), not `/dev/video*`.
+
+| Env | Default | Notes |
+| --- | --- | --- |
+| `DET_STREAM_URL` | `http://10.42.0.1:8090/stream.mjpg` | Upstream camera feed. |
+| `DET_NETWORK` | `ssd-mobilenet-v2` | Any detectNet name, or a custom ONNX path. |
+| `DET_THRESHOLD` | `0.5` | Confidence cutoff. |
+| `DET_MAX_BOXES` | `20` | Cap per frame. |
+| `DET_IMAGE` | `dustynv/jetson-inference:r36.3.0` | Newest published tag; this host is R36.4.7. |
+
+If the detector is not running the bridge retries quietly, the cockpit badge reads
+`detector offline`, and video is unaffected. If detections stop mid-flight the
+overlay clears within 2 s rather than leaving stale boxes over live video.
 
 ---
 
@@ -147,8 +265,10 @@ Planner). ✅ when arm/disarm and failsafe behave.
 **Stage 3 — override direction check, props OFF, armed, held down HARD or on a test stand.**
 With Mission Planner open, nudge each stick and verify motor/attitude response
 direction is correct (roll right → right side reacts, pitch forward → correct, yaw,
-throttle up → all motors increase). If any axis is backwards, flip the matching flag
-in `airborne/config.py → INVERT` and re-test. ✅ when all four axes are correct.
+throttle up → all motors increase). If any axis is backwards, set the matching env
+var on the airborne daemon — `DRONE_INVERT_ROLL`, `DRONE_INVERT_PITCH`,
+`DRONE_INVERT_THROTTLE`, `DRONE_INVERT_YAW` (all default `false`) — restart it and
+re-test. ✅ when all four axes are correct.
 
 **Stage 4 — props on, first hover, open area, low altitude, hand on a backup TX if available.**
 Verify hover holds when sticks are released (self-centering → hold). Test a gentle
@@ -159,8 +279,8 @@ gradually.
 
 # Files
 ```
-airborne/                         drone-side control daemon (stdlib + pymavlink only)
-  airborne_daemon/
+mtsuissl-airborne/                drone-side (stdlib + pymavlink; OpenCV only for the camera)
+  airborne_daemon/                control daemon — the safety boundary
     settings.py       env-driven config, validated at startup
     modes.py          ArduCopter mode numbers
     rc.py             pure stick→PWM scaling (unit-tested)
@@ -170,18 +290,34 @@ airborne/                         drone-side control daemon (stdlib + pymavlink 
     controller.py     50 Hz loop + failsafe state machine + arm/disarm
     udp_server.py     UDP ingest + telemetry publisher
     daemon.py         orchestration, signals, graceful shutdown
-  tests/              pytest: rc, protocol, failsafe (39 tests)
+  camera_daemon/                  MJPEG streamer (optional, port 8090)
+    settings.py       CAM_* config
+    detect.py         webcam auto-detection; GStreamer and V4L2 open paths
+    capture.py        capture thread, freshest-frame publishing, JPEG passthrough
+    server.py         multipart/x-mixed-replace HTTP server
+    service.py        orchestration, signals, graceful shutdown
+  tests/              pytest: rc, protocol, failsafe, camera (43 tests)
 
-ground/                           ground-side FastAPI bridge
+mtsuissl-ground/                  ground-side FastAPI bridge
   app/
     main.py           FastAPI app: static GUI, /ws, /healthz, lifespan
     settings.py       env-driven config (pydantic-settings)
     protocol.py       pydantic validation of browser messages
     udp_link.py       asyncio UDP link to the drone
     hub.py            WebSocket fan-out with per-client backpressure
-  tests/              pytest: protocol + TestClient integration (14 tests)
+    camera.py         reverse proxy for the drone's MJPEG feed (/camera/*)
+    detections.py     long-polls the detector, fans boxes out over /ws
+  detector/                       TensorRT detection (optional, port 8091)
+    settings.py       DET_* config
+    mjpeg.py          MJPEG client that always yields the newest frame
+    engine.py         jetson-inference detectNet wrapper + box formatting
+    state.py          latest-result holder with long-poll support
+    server.py         /detections + /healthz
+    service.py        orchestration, signals, graceful shutdown
+    run-container.sh  launches it in the dusty-nv container
+  gui/                React + Vite cockpit (see gui/README.md)
+  tests/              pytest: protocol, app integration, detector (30 tests)
 
-gui/index.html                    the web transmitter (dual sticks, hold-to-arm)
 PROTOCOL.md                       wire contract (proto v1)
 ```
 

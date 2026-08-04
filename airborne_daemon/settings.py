@@ -39,6 +39,14 @@ def _env_float(key: str, default: float) -> float:
         raise ValueError(f"{key}={raw!r} is not a number") from exc
 
 
+def _env_int_tuple(key: str, default: str) -> tuple[int, ...]:
+    raw = os.environ.get(key, default)
+    try:
+        return tuple(int(part) for part in raw.split(",") if part.strip())
+    except ValueError as exc:
+        raise ValueError(f"{key}={raw!r} is not a comma-separated list of integers") from exc
+
+
 def _env_bool(key: str, default: bool) -> bool:
     raw = os.environ.get(key)
     if raw is None:
@@ -85,6 +93,17 @@ class Settings:
     invert_throttle: bool = field(default_factory=lambda: _env_bool("DRONE_INVERT_THROTTLE", False))
     invert_yaw: bool = field(default_factory=lambda: _env_bool("DRONE_INVERT_YAW", False))
 
+    # --- RC-pilot instant takeover ---
+    # The transmitter mirrors its sticks onto these spare RC channels (TX mixer);
+    # the daemon watches them in RC_CHANNELS telemetry and releases the override
+    # the moment any of them moves. Empty = disabled. Channels 1-4 are useless
+    # here: while overriding, the FC echoes the override back on those channels.
+    pilot_takeover_channels: tuple[int, ...] = field(
+        default_factory=lambda: _env_int_tuple("DRONE_PILOT_TAKEOVER_CHANNELS", "")
+    )
+    # movement beyond this many microseconds from the session baseline = takeover
+    pilot_takeover_dz_us: int = field(default_factory=lambda: _env_int("DRONE_PILOT_TAKEOVER_DZ_US", 50))
+
     # --- Web takeoff (arm + GUIDED auto-climb, then hand off to the pilot mode) ---
     allow_web_takeoff: bool = field(default_factory=lambda: _env_bool("DRONE_ALLOW_TAKEOFF", True))
     takeoff_mode: str = field(default_factory=lambda: _env_str("DRONE_TAKEOFF_MODE", "GUIDED"))
@@ -129,6 +148,13 @@ class Settings:
             errors.append("takeoff_default_alt_m must be in (0, takeoff_max_alt_m]")
         if not (0.0 < self.takeoff_reach_frac <= 1.0):
             errors.append(f"takeoff_reach_frac {self.takeoff_reach_frac} out of (0, 1]")
+        for ch in self.pilot_takeover_channels:
+            if not (5 <= ch <= 16):
+                errors.append(
+                    f"pilot_takeover_channel {ch} out of [5, 16] (1-4 echo the override back)"
+                )
+        if not (10 <= self.pilot_takeover_dz_us <= 500):
+            errors.append(f"pilot_takeover_dz_us {self.pilot_takeover_dz_us} out of [10, 500]")
         if not (0.0 <= self.arm_throttle_center_tol <= 0.5):
             errors.append(f"arm_throttle_center_tol {self.arm_throttle_center_tol} out of [0, 0.5]")
         if not self.session_token:
