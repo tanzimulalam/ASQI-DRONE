@@ -41,6 +41,8 @@ you want to fly it rather than change it.
 - `SYSID_MYGCS=250`, `ARMING_CHECK=1` (all on), `FS_GCS_ENABLE=1`, `FENCE_ENABLE=1`
   (type 7, action RTL, radius 300 m, alt max 100 m), `FS_THR_ENABLE=1`,
   `RC_OVERRIDE_TIME=3` s, `RC_OPTIONS=32` (bit 1 "ignore MAVLink overrides" clear).
+- Battery: `BATT_MONITOR=4` (V+I), 3300 mAh, `BATT_ARM_VOLT=14`, low 14.0 V →
+  RTL, critical 13.6 V → Land. Thresholds are for a **4S** pack.
 
 > Read these off the vehicle rather than trusting this list. On 2026-08-04 the
 > aircraft was found with `ARMING_CHECK=0` (every pre-arm check disabled) and
@@ -106,7 +108,12 @@ rest still need doing. Use `tools/params.py` rather than guessing.
   **Applied 2026-08-04.**
 - `FENCE_ENABLE = 1` with a sane radius/altitude for early flights.
   **Applied 2026-08-04** (type 7, action RTL, 300 m radius, 100 m ceiling).
-- Confirm battery failsafe voltages are set for your pack. **Not yet verified.**
+- Battery failsafe. **Applied 2026-08-04.** The monitor was already configured
+  (`BATT_MONITOR=4`, 3300 mAh, low 14.0 V, critical 13.6 V, `BATT_ARM_VOLT=14`) but
+  **both actions were `0` — the aircraft would announce a flat battery and do
+  nothing about it, flying until the pack died.** Now `BATT_FS_LOW_ACT=2` (RTL) and
+  `BATT_FS_CRT_ACT=1` (Land). Re-check these against your actual pack; the
+  thresholds suit a 4S and would be wrong for anything else.
 
 ---
 
