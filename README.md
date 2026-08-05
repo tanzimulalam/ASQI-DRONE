@@ -82,6 +82,12 @@ grow, because a bar that changes height resizes the video underneath it.
 Outside those modes the airborne daemon refuses overrides outright, which is
 otherwise invisible until you push a stick and nothing happens.
 
+**Arm Only vs Arm & Take Off.** `Arm Only` arms and stops there, motors at
+`MOT_SPIN_ARM` idle. `Arm & Take Off` arms *and commands a climb*. Use `Arm Only`
+for anything on the ground: with the props off there is no thrust, so the flight
+controller keeps raising throttle chasing an altitude it can never reach and winds
+unloaded motors toward full RPM.
+
 ### Flying
 
 Two control sources, one active at a time. The unused one greys out.
@@ -113,6 +119,57 @@ never arrives would otherwise pin an axis at full deflection.
 | **PILOT TAKEOVER** | A safety pilot moved the transmitter sticks. GUI sticks stay dead until RESUME. |
 
 ---
+
+## Bench testing with the props off
+
+Verified working 2026-08-04: motors idle, sticks drive them differentially.
+
+**Props off. Aircraft secured.** An unloaded quad vibrates and will walk off a
+bench.
+
+1. Transmitter **on**, throttle stick fully down (an FS-i6X sits on a warning
+   screen and transmits nothing until you do)
+2. Press the **hardware safety switch** until its LED goes solid
+3. In the GUI: **ALT HOLD**, then **Arm Only**
+4. Move the sticks and listen for individual motors changing pitch
+
+### The mode gate catches everyone
+
+Indoors, arming fails with:
+
+```
+PreArm: Need Position Estimate
+```
+
+That is **not** an arming-check problem and turning checks off will not fix it.
+GUIDED, LOITER, POSHOLD and RTL each require a position estimate *by virtue of
+being that mode*. `ARMING_CHECK` has no say in it. **ALT_HOLD needs only the
+barometer**, which is why it is the mode for bench work. This blocks a transmitter
+arm gesture exactly the same way it blocks the GUI button.
+
+### If you must arm without GPS
+
+Only with props off, and put them back the moment you are done:
+
+```bash
+sudo systemctl stop drone-airborne
+python3 tools/params.py set ARMING_CHECK=0 FENCE_ENABLE=0    # bench only
+sudo systemctl start drone-airborne
+# ... test ...
+sudo systemctl stop drone-airborne
+python3 tools/params.py set ARMING_CHECK=1 FENCE_ENABLE=1    # RESTORE
+sudo systemctl start drone-airborne
+```
+
+`FENCE_ENABLE=1` demands a position fix before arming, so an enabled geofence
+makes indoor arming impossible on its own. That is the fence working correctly,
+not a fault.
+
+### GUI changes not showing up
+
+The bridge serves `gui/dist`. After `npm run build`, **hard reload the browser**
+(`Ctrl+Shift+R`). A plain F5 reuses the cached `index.html`, which still points at
+the previous JavaScript bundle, so a new build appears to do nothing.
 
 ## Range testing
 
@@ -214,7 +271,9 @@ stale tests, not product bugs, and are tracked separately.
 | `NvMapMemAllocInternalTagged ... error 12` | Out of memory. NvMap cannot swap. | Same as above. `run-container.sh` now waits for headroom first. |
 | Link works on the bench, not in the field | Campus Wi-Fi client isolation blocks station to station traffic | Use the drone's own hotspot. Never a shared network. |
 | Range much worse than expected | Regulatory domain fell back to `country 00` (14 dBm instead of 20) | `iw reg get`. The dispatcher should prevent this; check `journalctl -t drone-hotspot`. |
-| GUI changes do not appear | Serving a stale build | `cd gui && npm run build` |
+| GUI changes do not appear | Stale build, or a cached bundle in the browser | `cd gui && npm run build`, then hard reload (`Ctrl+Shift+R`) |
+| `PreArm: Need Position Estimate` indoors | Aircraft is in a mode that requires position | Switch to **ALT HOLD**. Not an arming-check issue; disabling checks will not help |
+| Sticks do nothing, everything else works | `SYSID_MYGCS` does not match the daemon's `DRONE_SRC_SYS` | ArduPilot silently drops overrides from any other system id. Both must be 250 |
 
 ## Safety
 
