@@ -23,7 +23,15 @@ function ModeButton({ mode, label, current, allowed, onSetMode }) {
   );
 }
 
-export default function CommandDeck({ mode, allowedModes, onSetMode, onDisarm, onTakeoff }) {
+export default function CommandDeck({
+  mode,
+  allowedModes,
+  armed,
+  onSetMode,
+  onArm,
+  onDisarm,
+  onTakeoff,
+}) {
   const allowed = allowedModes ?? [];
 
   return (
@@ -48,6 +56,13 @@ export default function CommandDeck({ mode, allowedModes, onSetMode, onDisarm, o
         </button>
       </div>
       <div className="row">
+        {/* Plain arm, no climb. Bench testing with the props off needs motors at
+            idle: ARM & TAKE OFF commands a climb, and with no thrust to show for
+            it the FC keeps pushing the throttle up, spinning unloaded motors
+            toward full RPM. */}
+        <button className="cmd" id="btnArm" onClick={onArm} disabled={armed}>
+          Arm&nbsp;Only
+        </button>
         <button className="cmd" id="btnTakeoff" onClick={onTakeoff}>
           Arm &amp; Take Off
         </button>

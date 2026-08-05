@@ -50,6 +50,7 @@ export default function App() {
   }
 
   const setMode = (mode) => sendCmd({ t: "cmd", cmd: "set_mode", mode });
+  const arm = () => sendCmd({ t: "cmd", cmd: "arm" });
   const disarm = () => sendCmd({ t: "cmd", cmd: "disarm" });
   const resume = () => sendCmd({ t: "cmd", cmd: "resume" });
   const confirmTakeoff = (alt) => {
@@ -88,7 +89,9 @@ export default function App() {
             <CommandDeck
               mode={tlm?.mode}
               allowedModes={tlm?.allowed_modes}
+              armed={!!tlm?.armed}
               onSetMode={setMode}
+              onArm={arm}
               onDisarm={disarm}
               onTakeoff={() => setTakeoffOpen(true)}
             />

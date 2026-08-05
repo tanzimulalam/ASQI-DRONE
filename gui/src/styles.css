@@ -1483,3 +1483,18 @@ button.cmd {
     height: clamp(20px, 2vw, 30px);
   }
 }
+
+/* Plain arm (no climb). Muted next to the green take-off button so the two are
+   not confused at a glance: this one is for bench work with the props off. */
+#btnArm {
+  background: linear-gradient(180deg, var(--panel3) 0%, var(--panel2) 100%);
+  border-color: var(--line);
+  color: var(--txt);
+  flex: 0 1 auto;
+  min-width: 8ch;
+}
+
+#btnArm:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
