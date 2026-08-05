@@ -53,7 +53,10 @@ def main() -> int:
 
     deadline = time.time() + args.seconds
     while time.time() < deadline:
-        msg = m.recv_match(type="RC_CHANNELS", blocking=True, timeout=2)
+        try:
+            msg = m.recv_match(type="RC_CHANNELS", blocking=True, timeout=2)
+        except TypeError:
+            continue  # pymavlink instance-tracking defect; next frame is fine
         if msg is None:
             continue
         frames += 1

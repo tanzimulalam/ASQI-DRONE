@@ -28,6 +28,21 @@ DEFAULT_DEVICE = "/dev/ttyACM0"
 DEFAULT_BAUD = 115200
 
 
+def recv(m, **kwargs):
+    """recv_match that survives pymavlink's instance-tracking bug.
+
+    Some messages arrive with an instance field while pymavlink's per-type
+    `_instances` dict is still None, and its own add_message() then raises
+    TypeError from inside recv_match. It is a library defect, not a link problem,
+    and the next message parses fine — but uncaught it aborts a parameter write
+    midway, leaving you unsure whether the value took. Swallow it and continue.
+    """
+    try:
+        return m.recv_match(**kwargs)
+    except TypeError:
+        return None
+
+
 def connect(device: str, baud: int, timeout: float = 30.0):
     print(f"connecting to {device} ...", file=sys.stderr)
     m = mavutil.mavlink_connection(device, baud=baud)
@@ -40,7 +55,7 @@ def connect(device: str, baud: int, timeout: float = 30.0):
 
 def refuse_if_armed(m) -> None:
     """Parameter changes on an armed vehicle are not something to do casually."""
-    hb = m.recv_match(type="HEARTBEAT", blocking=True, timeout=5)
+    hb = recv(m, type="HEARTBEAT", blocking=True, timeout=5)
     if hb is None:
         print("  warning: no heartbeat to check arm state", file=sys.stderr)
         return
@@ -55,7 +70,7 @@ def get_param(m, name: str, timeout: float = 8.0):
     )
     deadline = time.time() + timeout
     while time.time() < deadline:
-        msg = m.recv_match(type="PARAM_VALUE", blocking=True, timeout=1)
+        msg = recv(m, type="PARAM_VALUE", blocking=True, timeout=1)
         if msg and msg.param_id.strip("\x00") == name:
             return msg.param_value
     return None
@@ -72,7 +87,7 @@ def set_param(m, name: str, value: float, timeout: float = 8.0) -> bool:
     )
     deadline = time.time() + timeout
     while time.time() < deadline:
-        msg = m.recv_match(type="PARAM_VALUE", blocking=True, timeout=1)
+        msg = recv(m, type="PARAM_VALUE", blocking=True, timeout=1)
         if msg and msg.param_id.strip("\x00") == name:
             # Confirm from the vehicle's own report, not from having sent it.
             got = msg.param_value
