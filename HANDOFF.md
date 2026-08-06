@@ -331,6 +331,17 @@ at boot. Options include a lighter desktop session, a kiosk-mode browser, or
 moving inference off the desktop entirely. What is the least invasive fix that
 survives a student opening a browser?
 
+**Ground station radio is the bottleneck, and software cannot fix it.** The link
+is asymmetric by 12 dB: measured 2026-08-06, the ground heard the drone at
+-74 dBm while the drone heard the ground at -86 dBm. The weak direction is
+ground-to-drone, which carries stick input, and it produced a real in-flight
+control-link failsafe at altitude (616 ms gap, daemon commanded LAND). The drone
+runs a USB Archer T2U at 20 dBm; the ground runs the Jetson's onboard rtl88x2ce,
+which is hardware-capped at 15 dBm regardless of regulatory domain — verified,
+the driver accepts a 20 dBm request and ignores it. **A second Archer T2U for the
+ground station is the single highest-value hardware change available to this
+project.**
+
 **Link margin at range.** Bench numbers give roughly 4x headroom on video. Nobody
 knows what happens at 50 m with the aircraft airborne and the antennas oriented
 as they will actually be. Predicted around -66 dBm, entirely untested.
