@@ -36,6 +36,12 @@ fi
 install -m 0644 "$HERE/ground-bridge.service"   /etc/systemd/system/
 install -m 0644 "$HERE/ground-detector.service" /etc/systemd/system/
 
+# Restores regdomain and TX power whenever the station joins the drone's hotspot.
+# Without it this end sits on the world-domain fallback at 15 dBm, on the weaker
+# half of an already asymmetric link.
+install -d -m 0755 /etc/NetworkManager/dispatcher.d
+install -m 0755 "$HERE/90-drone-link" /etc/NetworkManager/dispatcher.d/
+
 # The ground station joins the drone's hotspot on its own. Route metric keeps
 # any wired network as the default route, so this never steals ssh.
 if nmcli -t -f NAME con show | grep -qx drone-link; then
