@@ -1,6 +1,7 @@
 # Project handoff
 
-Status document for someone picking this project up cold. Written 2026-08-05.
+Status document for someone picking this project up cold. Written 2026-08-05,
+updated 2026-08-06 after the first flight.
 
 Everything below was verified against the running hardware on 2026-08-04/05, not
 copied from older documentation. Where this contradicts a README, trust this file
@@ -163,14 +164,23 @@ path, and both can be dead while the aircraft still flies.
   interlock that zeroes all axes on window focus loss
 - Bench arming with props off: motors respond to both stick and keyboard input
 
-### Never done
+### First flight, 2026-08-06
 
-- **50 m range test**
-- **Any flight.** The aircraft has never left the ground under this system.
-- **Stage 3 override direction check.** Until 2026-08-04 the sticks did not reach
-  the aircraft at all (see gotcha 1), so no previous direction check can have
-  been valid.
-- GPS lock has never been achieved during any session so far (all indoor work)
+The aircraft flew. GPS locked for the first time (16 satellites, EKF healthy) and
+it held position in Loiter under GUI control.
+
+Two things were learned the hard way and both are recorded below: the pitch axis
+was reversed (found in the air, fixed with `DRONE_INVERT_PITCH`), and the control
+link failsafe fired for real at altitude. See section 8a.
+
+### Still never done
+
+- **50 m range test.** `tools/linkcheck.sh` exists for it.
+- **A full Stage 3 direction check.** Pitch was found reversed *while flying*
+  rather than on the bench. Roll, yaw and throttle have still never been verified
+  props-off. Do this before the next flight.
+- **Stage 2 link-loss test on the bench.** It has now happened involuntarily in
+  the air, which is not the same as testing it deliberately.
 
 ### Test suites
 
@@ -212,6 +222,61 @@ every write by reading it back from the vehicle.
 > **Firmware naming quirk:** this board uses `RNGFND1_MIN_CM` / `RNGFND1_MAX_CM`
 > (centimetres). Current ArduPilot documentation uses `RNGFND1_MIN` / `_MAX` in
 > metres. Following the docs literally will set parameters that do not exist here.
+
+---
+
+## 8a. What the first flight taught (2026-08-06)
+
+### The control-link failsafe fired for real
+
+```
+14:45:58  vehicle armed
+14:46:45  FAILSAFE: control link lost (616 ms) -> commanding LAND
+14:46:46  failsafe latch cleared: vehicle disarmed
+```
+
+47 seconds in, at altitude, the ground-to-drone control path went silent past the
+600 ms threshold. The daemon neutralised the sticks, released the RC override and
+commanded LAND. It latches by design, so the GUI stayed dead until the aircraft
+disarmed. **Nothing malfunctioned.** This is the failsafe working, and it is the
+only time it has fired outside a test.
+
+This was **not** the RC transmitter. That message comes from our daemon watching
+Wi-Fi packet age; an RC dropout produces ArduPilot's own `Radio Failsafe`.
+
+### Why: the link is asymmetric, and control rides the weak half
+
+Measured during the same session:
+
+| Direction | Signal | Carries |
+|---|---|---|
+| Ground hears drone | -74 dBm | video, telemetry |
+| **Drone hears ground** | **-86 dBm** | **stick input** |
+
+The drone runs a USB Archer T2U at 20 dBm. The ground runs the Jetson's onboard
+`rtl88x2ce`, **hardware-capped at 15 dBm** — verified, the driver accepts a 20 dBm
+request, reports success, and ignores it. Setting the regulatory domain does not
+help; it was never the limit.
+
+So video degrades visibly and looks like the problem, while control has less
+margin and fails silently until the failsafe catches it.
+
+### And a large part of it was a wall
+
+Signal across the session: **-30 dBm** on the bench, **-56 dBm** with both
+machines outside, **-71 dBm** immediately after the ground station was carried
+back indoors to reach a wired ethernet port. That 15 dB step is a building wall,
+and it is larger than any hardware change would buy.
+
+**Fly with the ground station outside and untethered.** Note the irony worth
+avoiding: it was indoors because a remote operator asked for ethernet to keep
+visibility. Read the logs afterwards instead.
+
+### Pitch was reversed, and it was found in the air
+
+GUI pitch-forward commanded nose-up. Fixed with `DRONE_INVERT_PITCH=1` in
+`/etc/drone/drone.env`. **Roll, yaw and throttle have still never been checked.**
+See gotcha 11.
 
 ---
 
@@ -276,6 +341,14 @@ If you write new MAVLink code here, guard your reads.
 **10. `pkill -f <pattern>` over SSH kills your own shell**, because the pattern
 appears in the shell's own command line. Use the `[p]attern` bracket trick.
 
+**11. Stick direction is a daemon-side convention, and it was wrong.** The GUI
+sends pitch-forward as `+1`; the daemon mapped that to a high PWM on ch2, which
+ArduPilot reads as nose-up. Corrected with `DRONE_INVERT_PITCH=1`. The transmitter
+is unaffected because it feeds the flight controller directly. **If you ever set
+an invert flag, verify the transmitter agrees** — if the GUI and the safety
+pilot's sticks disagree on which way is forward, taking control back becomes the
+dangerous moment rather than the safe one.
+
 ---
 
 ## 10. Immediate next steps
@@ -330,6 +403,43 @@ having, or is the ch5 mode switch sufficient? The latency difference is roughly
 at boot. Options include a lighter desktop session, a kiosk-mode browser, or
 moving inference off the desktop entirely. What is the least invasive fix that
 survives a student opening a browser?
+
+**A second, independent radio link (mLRS).** The strongest open direction. mLRS
+(github.com/olliw42/mLRS, supported in ArduPilot docs) carries RC control *and*
+MAVLink telemetry over one LoRa link, 868/915 MHz or 2.4 GHz, at ranges far past
+what the Wi-Fi manages. **Buy the 900 MHz variant** — the 2.4 GHz one would share
+a band with the video hotspot on channel 11, which is the problem, not the fix.
+Note a TX module and an RX module are both required; some listings sell only one.
+
+Three possible topologies, in increasing order of ambition:
+
+1. **RX to the Pixhawk, MAVLink only.** What mLRS is designed for. Gives an
+   independent telemetry and backup-command path that survives total Wi-Fi loss,
+   viewable in Mission Planner. Works out of the box. **Start here.**
+2. **RX to the airborne Jetson.** Physically fine (40-pin UART or a USB-serial
+   adapter), and architecturally *better* for this project's safety model: it
+   keeps the daemon as the Pixhawk's only commander and hands it a redundant
+   ground link, rather than introducing a second MAVLink source to the flight
+   controller. The catch is bandwidth. A `ctrl` packet is ~110 bytes at 50 Hz,
+   roughly **44 kbps**, which is a lot for a long-range LoRa mode. This needs a
+   compact binary encoding, a lower rate, or a faster/shorter-range mLRS mode
+   before it is viable. mLRS does support a transparent serial mode alongside
+   MAVLink, so the pipe exists; the budget is the question.
+3. **Move GUI control onto mLRS entirely.** Takes Wi-Fi out of the control path,
+   leaving it to carry only video. A genuine redesign — the failsafe state
+   machine would have to be re-sited — and it should be scoped as its own piece
+   of work with the 2026-08-06 failsafe log as the motivating evidence.
+
+**Whichever topology: mind the system ID.** `SYSID_MYGCS=250` exists so the
+daemon's RC overrides are accepted while a second GCS on 255 can monitor without
+its joystick injecting anything (see gotcha 1). Adding a second MAVLink source
+without deciding its sysid reproduces exactly the "sticks silently do nothing"
+failure that cost a day to find.
+
+mLRS cannot carry video. Ten Mbit/s of MJPEG will never fit down a LoRa link, so
+Wi-Fi keeps that job regardless. The end state is three separate paths — mLRS for
+safety-critical low-bandwidth traffic, Wi-Fi for bulk data, RC for manual
+takeover — against today's two, one of which carries almost everything.
 
 **Ground station radio is the bottleneck, and software cannot fix it.** The link
 is asymmetric by 12 dB: measured 2026-08-06, the ground heard the drone at
