@@ -46,7 +46,18 @@ def recv(m, **kwargs):
 def connect(device: str, baud: int, timeout: float = 30.0):
     print(f"connecting to {device} ...", file=sys.stderr)
     m = mavutil.mavlink_connection(device, baud=baud)
-    if m.wait_heartbeat(timeout=timeout) is None:
+    # wait_heartbeat() calls recv_match() internally, so it hits the same
+    # instance-tracking defect described in recv(). It crashed a parameter
+    # restore mid-flight-prep on 2026-08-06 and the operator was left believing
+    # the write had happened. Retry rather than die.
+    deadline = time.time() + timeout
+    hb = None
+    while hb is None and time.time() < deadline:
+        try:
+            hb = m.wait_heartbeat(timeout=5)
+        except TypeError:
+            continue
+    if hb is None:
         sys.exit(f"no heartbeat from {device} within {timeout:.0f}s")
     print(f"  flight controller up: sys={m.target_system} comp={m.target_component}",
           file=sys.stderr)
