@@ -1,7 +1,7 @@
 # Project handoff
 
 Status document for someone picking this project up cold. Written 2026-08-05,
-updated 2026-08-06 after the first flight.
+updated 2026-08-06 after the first two flights.
 
 Everything below was verified against the running hardware on 2026-08-04/05, not
 copied from older documentation. Where this contradicts a README, trust this file
@@ -9,6 +9,49 @@ and then go re-read the hardware yourself, because that is exactly how the
 earlier discrepancies were found.
 
 ---
+
+---
+
+## 0. If you are an AI assistant reading this
+
+You will be asked to help operate and improve a **real aircraft that flies**. A
+few things about how this works in practice.
+
+**You cannot touch the hardware.** No wiring, no soldering, no pressing buttons,
+no putting props on. The operator does all of that. What you can do is read the
+machines, change configuration, write code, and interpret logs. Say so plainly
+when asked to do something physical.
+
+**Reaching the machines.** SSH as `john` using the key at
+`~/.ssh/id_ed25519_jetson` on the operator's Windows workstation. In flight
+configuration the drone has no ethernet and exists only as `10.42.0.1` on its own
+hotspot, which the workstation is not on — so tunnel to it through the ground
+station with a `direct-tcpip` channel. Driving this from Python with `paramiko`
+works well; a helper that tries direct first and falls back to the tunnel is the
+pattern that survived this project.
+
+**Watch out for these, all of which cost real time here:**
+
+- `pkill -f <pattern>` over SSH kills your own shell, because the pattern appears
+  in the shell's own command line. Use `[p]attern`.
+- Long-running remote commands need a raised SSH timeout or backgrounding with
+  `setsid nohup`; a 120 s default will cut off a full parameter dump.
+- The operator may be physically working on the aircraft while you read it.
+  Ask what state the hardware is in before you start something that depends on
+  it being stable. Two parameter backups were lost this way.
+
+**Safety discipline that is not optional.** Arming indoors requires setting
+`ARMING_CHECK=0` and `FENCE_ENABLE=0`. **You must restore both to 1 before the
+aircraft goes outside**, and confirm the restore by reading the values back. On
+2026-08-06 a restore silently failed on a library crash and the aircraft was
+minutes from flying with every pre-arm check disabled. Never report a parameter
+write as done on the strength of having sent it.
+
+**Be careful about confidence.** Several times in this project a confident
+diagnosis was wrong: the compass was declared healthy when it was not, a 5 dB
+radio gain was promised that the hardware could not deliver, and a "bundle"
+product listing turned out to be a single item. Read the vehicle, read the logs,
+and say when you do not know.
 
 ## 1. What this is
 
@@ -181,6 +224,8 @@ link failsafe fired for real at altitude. See section 8a.
   props-off. Do this before the next flight.
 - **Stage 2 link-loss test on the bench.** It has now happened involuntarily in
   the air, which is not the same as testing it deliberately.
+- **The control-sender fix for gotcha 12.** Until that is done, every flight
+  depends on nobody touching the ground station's keyboard.
 
 ### Test suites
 
@@ -272,6 +317,22 @@ and it is larger than any hardware change would buy.
 avoiding: it was indoors because a remote operator asked for ethernet to keep
 visibility. Read the logs afterwards instead.
 
+### Second session, same day: GPS geometry
+
+`PreArm: High GPS HDOP` blocked arming with **16 satellites and a healthy 3D
+fix**. Measured HDOP was **1.46** against `GPS_HDOP_GOOD = 140` (i.e. 1.40) —
+failing by 0.06.
+
+HDOP is satellite *geometry*, not count. Plenty of satellites clustered in one
+part of the sky still gives a poorly conditioned position solution, and Loiter
+depends entirely on position. Waiting, or moving away from obstructions that
+block the low-elevation satellites, is the fix. **Do not lower
+`GPS_HDOP_GOOD`** — it would arm on a fix the flight controller has explicitly
+said it does not trust.
+
+Read live values with `GPS_RAW_INT` (`eph` field / 100 = HDOP); the daemon's
+telemetry does not carry HDOP.
+
 ### Pitch was reversed, and it was found in the air
 
 GUI pitch-forward commanded nose-up. Fixed with `DRONE_INVERT_PITCH=1` in
@@ -348,6 +409,32 @@ is unaffected because it feeds the flight controller directly. **If you ever set
 an invert flag, verify the transmitter agrees** — if the GUI and the safety
 pilot's sticks disagree on which way is forward, taking control back becomes the
 dangerous moment rather than the safe one.
+
+**12. A backgrounded browser tab silently stops flying the aircraft.** The 50 Hz
+control uplink runs on `setInterval`, and browsers throttle or suspend timers in
+hidden tabs. Measured 2026-08-06 with the cockpit tab hidden: **0 to 3 control
+packets in 2 seconds**, an effective 1.5 Hz against the required 50 Hz. The gap
+between packets then exceeds the 600 ms failsafe threshold, so the aircraft
+neutralises the sticks and commands LAND.
+
+Tab switched, window minimised, screen locked, another workspace — any of these
+and the aircraft failsafes within a second. **This is the most likely cause of
+the in-flight failsafe on the same day.** `ctrl_age_ms` sitting in the hundreds
+while the aircraft is stationary with a strong link is the signature.
+
+Operationally: GUI full screen, focused, screen blanking and lock disabled on the
+ground station. **In code this still needs fixing** — move the control sender off
+`setInterval` (a Web Worker is the usual answer) so browser throttling cannot
+silence it, and make the UI say explicitly when the cockpit has stopped
+transmitting. The existing NO CONTROL AUTHORITY banner does fire, but its wording
+("aircraft is discarding our commands") is wrong for this case: the aircraft is
+not discarding anything, nothing is being sent.
+
+**13. `pymavlink` crashes inside `wait_heartbeat()` as well as `recv_match()`.**
+Same instance-tracking defect as gotcha 9. It aborted a safety-parameter restore
+during flight preparation on 2026-08-06, and the read-back showed both values
+still at their unsafe bench settings. `tools/params.py` now retries around both.
+**Always read parameters back after writing them.**
 
 ---
 
