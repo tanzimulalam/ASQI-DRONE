@@ -1,0 +1,43 @@
+#!/bin/bash
+# NetworkManager dispatcher: re-apply radio settings whenever the drone hotspot
+# comes up.
+#
+# Both of these are runtime-only state that a plain `nmcli con up` does not
+# restore, so without this the AP silently comes back on the conservative
+# world-domain limits after every reboot:
+#
+#   * regulatory domain — defaults to country 00 (the "unknown location"
+#     fallback), which caps transmit power well below what the US allows and
+#     costs a large part of the usable range.
+#   * TX power — reset by the driver each time the interface is brought up.
+#
+# 20 dBm (2000 mBm) is the FCC ceiling for 2.4 GHz per the regulatory database.
+# Do NOT raise it: this Realtek driver will happily accept and report 30 dBm
+# without regard to the regdb, which would put the lab outside its licence.
+#
+# Install to /etc/NetworkManager/dispatcher.d/90-drone-hotspot (root:root 0755).
+set -u
+
+IFACE="$1"
+ACTION="${2:-}"
+
+HOTSPOT_CONN="drone-hotspot"
+REGDOMAIN="US"
+TXPOWER_MBM=2000
+
+[ "$ACTION" = "up" ] || exit 0
+[ "${CONNECTION_ID:-}" = "$HOTSPOT_CONN" ] || exit 0
+
+logger -t drone-hotspot "applying radio settings on $IFACE"
+
+iw reg set "$REGDOMAIN" 2>/dev/null || logger -t drone-hotspot "regdomain set failed"
+# The regulatory change propagates to the phy asynchronously; setting power
+# before it lands gets clamped to the old (country 00) ceiling.
+sleep 1
+if iw dev "$IFACE" set txpower fixed "$TXPOWER_MBM" 2>/dev/null; then
+  logger -t drone-hotspot "txpower set to ${TXPOWER_MBM} mBm"
+else
+  logger -t drone-hotspot "txpower set FAILED on $IFACE"
+fi
+
+exit 0

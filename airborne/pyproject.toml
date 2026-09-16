@@ -1,0 +1,17 @@
+[project]
+name = "airborne-daemon"
+version = "1.0.0"
+description = "Hardened MAVLink control daemon for a Pixhawk 6C / ArduCopter quad"
+requires-python = ">=3.10"
+dependencies = ["pymavlink>=2.4"]
+
+[project.scripts]
+airborne-daemon = "airborne_daemon.daemon:main"
+camera-daemon = "camera_daemon.service:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.setuptools]
+packages = ["airborne_daemon", "camera_daemon"]

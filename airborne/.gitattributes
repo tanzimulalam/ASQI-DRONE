@@ -1,0 +1,4 @@
+# Everything here is deployed to Linux (the Jetsons). Keep LF in the repo and in
+# checkouts so shell scripts and unit files stay usable even when edited from
+# Windows — a CRLF script fails on the Jetson with "bad interpreter: ^M".
+* text=auto eol=lf
