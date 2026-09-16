@@ -1,0 +1,54 @@
+#!/bin/bash
+# NetworkManager dispatcher: re-apply radio settings when the ground station
+# joins the drone's hotspot.
+#
+# The mirror of 90-drone-hotspot in the airborne repo, and it exists for the same
+# reason: regulatory domain and TX power are runtime-only state that a plain
+# `nmcli con up` does not restore, so without this the ground station silently
+# comes back on the world-domain fallback (country 00) after every reboot.
+#
+# This end matters more than it looks. The drone runs a USB adapter with real
+# antennas; the ground station has the Jetson's onboard M.2 card with small
+# internal ones, so it is already the weaker half of the link. Measured
+# 2026-08-06: the ground heard the drone at -74 dBm while the drone heard the
+# ground at -86 dBm. That 12 dB asymmetry sits on the ground-to-drone path, which
+# is the one carrying stick input — and it is what produced a real in-flight
+# control-link failsafe at altitude. Leaving 5 dB unclaimed here is not free.
+#
+# 20 dBm (2000 mBm) is the FCC ceiling for 2.4 GHz. Do not raise it.
+#
+# MEASURED 2026-08-06: this does not actually raise power on the Jetson's onboard
+# card. The regdomain change applies, `iw phy` then advertises 20.0 dBm on ch 11,
+# the driver accepts `set txpower fixed 2000` and reports success — and the radio
+# stays at 15.00 dBm. rtl88x2ce is hardware-capped below the regulatory limit.
+# The script is kept because setting the regdomain is still correct and costs
+# nothing, but do not expect a power gain here. Closing the 12 dB asymmetry with
+# the drone needs an external adapter on this end (a second Archer T2U), not
+# software.
+#
+# Install to /etc/NetworkManager/dispatcher.d/90-drone-link (root:root 0755).
+set -u
+
+IFACE="$1"
+ACTION="${2:-}"
+
+LINK_CONN="drone-link"
+REGDOMAIN="US"
+TXPOWER_MBM=2000
+
+[ "$ACTION" = "up" ] || exit 0
+[ "${CONNECTION_ID:-}" = "$LINK_CONN" ] || exit 0
+
+logger -t drone-link "applying radio settings on $IFACE"
+
+iw reg set "$REGDOMAIN" 2>/dev/null || logger -t drone-link "regdomain set failed"
+# The regulatory change reaches the phy asynchronously; setting power before it
+# lands gets clamped to the old (country 00) ceiling.
+sleep 1
+if iw dev "$IFACE" set txpower fixed "$TXPOWER_MBM" 2>/dev/null; then
+  logger -t drone-link "txpower set to ${TXPOWER_MBM} mBm"
+else
+  logger -t drone-link "txpower set FAILED on $IFACE"
+fi
+
+exit 0

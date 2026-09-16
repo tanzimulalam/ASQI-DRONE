@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Frontend
+node_modules/
+dist/
+*.local
+
+# TensorRT build artifacts and logs
+*.engine
+*.log

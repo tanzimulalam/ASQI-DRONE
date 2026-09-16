@@ -1,0 +1,9 @@
+# Everything here is deployed to Linux (the Jetsons). Keep LF in the repo and in
+# checkouts so shell scripts stay runnable even when edited from Windows.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+gui/public/models/** binary

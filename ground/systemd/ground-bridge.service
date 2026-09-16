@@ -1,0 +1,29 @@
+[Unit]
+Description=Ground station bridge (GUI + WebSocket to UDP relay)
+Documentation=https://github.com/mtsuissl/mtsuissl-ground
+After=network-online.target
+Wants=network-online.target
+
+# Rate limiting lives in [Unit]: systemd ignores these in [Service]
+# ("Unknown key name ... ignoring"), which silently disables it.
+StartLimitIntervalSec=120
+StartLimitBurst=8
+
+[Service]
+Type=simple
+User=john
+Group=john
+WorkingDirectory=/home/john/Documents/mtsuissl-ground
+EnvironmentFile=/etc/drone/ground.env
+ExecStart=/usr/bin/python3 -m app
+Restart=always
+RestartSec=3
+# uvicorn drains connections on SIGINT; SIGKILL mid-drain leaves :8000 held long
+# enough that the restart fails to bind.
+KillSignal=SIGINT
+TimeoutStopSec=20
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
