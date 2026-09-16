@@ -264,6 +264,20 @@ Read off the vehicle 2026-08-05. **Re-read before trusting.**
 Use `tools/params.py` in the airborne repo to read and write these. It confirms
 every write by reading it back from the vehicle.
 
+**Flight mode switch, read off the vehicle 2026-09-11.** `FLTMODE_CH` is 5, which
+is SwC on the FS-i6X. A three position switch only reaches slots 1, 4 and 6.
+
+| Slot | Value | Mode | SwC position |
+|---|---|---|---|
+| `FLTMODE1` | 0 | STABILIZE | up |
+| `FLTMODE4` | 2 | ALT_HOLD | middle |
+| `FLTMODE6` | 5 | LOITER | down |
+
+Slots 2, 3 and 5 are also 0 and unreachable with this switch. This is the manual
+takeover path referred to in gotcha 6, and it was undocumented until now. The
+up/down orientation was inferred from one observation, so confirm against the GUI
+mode readout before relying on it.
+
 > **Firmware naming quirk:** this board uses `RNGFND1_MIN_CM` / `RNGFND1_MAX_CM`
 > (centimetres). Current ArduPilot documentation uses `RNGFND1_MIN` / `_MAX` in
 > metres. Following the docs literally will set parameters that do not exist here.
@@ -435,6 +449,48 @@ Same instance-tracking defect as gotcha 9. It aborted a safety-parameter restore
 during flight preparation on 2026-08-06, and the read-back showed both values
 still at their unsafe bench settings. `tools/params.py` now retries around both.
 **Always read parameters back after writing them.**
+
+**Update 2026-09-11: that fix was committed but never deployed.** The drone Jetson
+was still on `1d15dcd`, two commits and five weeks behind, running the unhardened
+call, and `params.py` crashed in exactly the documented way during a safety
+parameter write. This document describes the repository. The aircraft runs whatever
+it last pulled. Check `git log --oneline -1` on the drone before trusting anything
+here about tooling.
+
+**14. The ground station Wi-Fi profile named `drone-tx` is dead.** It is pinned to
+interface `wlxb019215ad676`, a USB adapter not present in that machine, so
+activating it fails with "mismatching interface name". The profile that actually
+works is **`drone-link`**, bound to the onboard `wlP1p1s0` and joining SSID
+`drone-tx`. A third profile, `Drone`, is pinned to the same absent adapter.
+
+Every Wi-Fi profile including BlueWiFi has autoconnect priority 0, so which network
+the ground station joins at boot is arbitrary. On 2026-09-11 it booted onto campus
+Wi-Fi and the aircraft was unreachable. Plugging in ethernet also drops it off the
+hotspot. Recover with `nmcli connection up drone-link`. Fix durably by raising
+`drone-link` autoconnect priority above BlueWiFi.
+
+**15. The drone has no internet in flight config, and its clock is wrong.** `git
+pull` on the drone Jetson fails with `Could not resolve host: github.com` whenever
+it is on its own hotspot, which contradicts section 4. Ship commits over the tunnel
+as a bundle instead:
+
+    git bundle create /tmp/x.bundle <drone-HEAD>..main
+    scp /tmp/x.bundle drone:/tmp/
+    ssh drone 'cd ~/Documents/mtsuissl-airborne && git pull --ff-only /tmp/x.bundle main'
+
+Its clock also runs weeks behind with `System clock synchronized: no`, so journal
+timestamps are wrong and today's entries interleave with the 2026-08-06 flight logs
+cited in section 8a. Use `journalctl -n <lines>` rather than time ranges there.
+
+**16. ALT_HOLD is the wrong mode for a props-off bench check.** Its altitude
+controller commands thrust, gets no altitude response because there are no props,
+and ramps the motors to saturation. The flight controller then reports `Potential
+Thrust Loss (1)` and `(4)`, which is the controller saturating rather than a motor
+or ESC fault. It also refuses to disarm, because a centred throttle in ALT_HOLD
+means hold altitude rather than idle, so the vehicle believes it is flying. Pull
+throttle fully down to disarm. For direction checks use STABILIZE, where throttle
+maps straight to motor output. STABILIZE is not in the daemon's allowed modes, so
+drive it from the transmitter.
 
 ---
 
