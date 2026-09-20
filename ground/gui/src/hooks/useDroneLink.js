@@ -1,5 +1,52 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { CTRL_PERIOD_MS, TLM_STALE_MS, DET_STALE_MS } from "../config.js";
+import { CTRL_PERIOD_MS, TLM_STALE_MS, DET_STALE_MS, TX_STALL_MS } from "../config.js";
+
+/**
+ * A 50 Hz tick that a hidden tab cannot silence.
+ *
+ * Browsers clamp setInterval in backgrounded tabs to roughly 1 Hz. Measured on
+ * 2026-08-06 with the cockpit tab hidden: 0 to 3 control packets in 2 seconds,
+ * against the 50 Hz this link requires. The gap between packets then exceeds the
+ * airborne 600 ms failsafe threshold, so the aircraft neutralises the sticks and
+ * commands LAND while the radio is perfectly healthy. Tab switched, window
+ * minimised, screen locked or another workspace all do it.
+ *
+ * Worker timers are not subject to that clamp, so the tick is generated there and
+ * the send still happens on the main thread, which owns the socket. If a Worker
+ * cannot be constructed we fall back to setInterval, which is no worse than the
+ * behaviour this replaces.
+ *
+ * This does not survive the whole page being frozen, which stops workers too.
+ * That is why the caller also tracks whether packets are genuinely leaving and
+ * says so in the UI rather than assuming this worked.
+ */
+function startTicker(periodMs, onTick) {
+  try {
+    const src =
+      "let id=null;onmessage=function(e){var m=e.data||{};" +
+      "if(m.t==='start'){clearInterval(id);id=setInterval(function(){postMessage(0);},m.ms);}" +
+      "else if(m.t==='stop'){clearInterval(id);id=null;}};";
+    const url = URL.createObjectURL(new Blob([src], { type: "text/javascript" }));
+    const worker = new Worker(url);
+    worker.onmessage = onTick;
+    worker.postMessage({ t: "start", ms: periodMs });
+    return {
+      kind: "worker",
+      stop() {
+        try {
+          worker.postMessage({ t: "stop" });
+          worker.terminate();
+        } catch {
+          /* already gone */
+        }
+        URL.revokeObjectURL(url);
+      },
+    };
+  } catch {
+    const id = setInterval(onTick, periodMs);
+    return { kind: "interval", stop: () => clearInterval(id) };
+  }
+}
 
 /**
  * Owns the WebSocket to the ground bridge, the login handshake, the 50 Hz control
@@ -15,7 +62,7 @@ import { CTRL_PERIOD_MS, TLM_STALE_MS, DET_STALE_MS } from "../config.js";
  * values live in `axesRef` and are read by the sender; the sender only transmits
  * once authenticated.
  *
- * Returns: axesRef, tlm, conn, sendCmd, and { authed, authBusy, authError,
+ * Returns: axesRef, tlm, conn, sendCmd, txOk, and { authed, authBusy, authError,
  * airborneIp, login }.
  */
 export function useDroneLink() {
@@ -26,6 +73,10 @@ export function useDroneLink() {
   const passwordRef = useRef(null);
   const seqRef = useRef(0);
   const lastTlmRef = useRef(0);
+  // When a control packet last actually left this browser. Drives txOk, which is
+  // the cockpit's honest answer to "are we still flying this thing".
+  const lastSendRef = useRef(0);
+  const txOkRef = useRef(true);
 
   const [tlm, setTlm] = useState(null);
   // Newest detection frame from the ground-side TensorRT detector, or null when
@@ -37,6 +88,7 @@ export function useDroneLink() {
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState(null);
   const [airborneIp, setAirborneIp] = useState(null);
+  const [txOk, setTxOk] = useState(true);
 
   const setAuthedBoth = (v) => {
     authedRef.current = v;
@@ -118,6 +170,7 @@ export function useDroneLink() {
         }
         switch (msg.t) {
           case "auth_ok":
+            lastSendRef.current = Date.now(); // don't flag a stall before the first send
             setAuthedBoth(true);
             setAuthBusy(false);
             setAuthError(null);
@@ -149,22 +202,51 @@ export function useDroneLink() {
 
     connect();
 
-    // 50 Hz control uplink — only transmits once authenticated.
-    const ctrlTimer = setInterval(() => {
-      if (!openRef.current || !authedRef.current) return;
-      const a = axesRef.current;
-      wsRef.current.send(
-        JSON.stringify({
-          t: "ctrl",
-          seq: seqRef.current++,
-          ts: Date.now(),
-          roll: +a.roll.toFixed(4),
-          pitch: +a.pitch.toFixed(4),
-          thr: +a.throttle.toFixed(4),
-          yaw: +a.yaw.toFixed(4),
-        })
-      );
-    }, CTRL_PERIOD_MS);
+    // 50 Hz control uplink, only transmitted once authenticated. Driven from a
+    // worker so a hidden tab cannot throttle it; see startTicker above.
+    //
+    // A hidden tab keeps transmitting rather than going silent. The axes are
+    // already zeroed by the keyboard interlock on blur or page-hide, so what goes
+    // out is neutral sticks, which the aircraft holds on. That is deliberate: the
+    // 600 ms failsafe exists to detect a lost radio link, and letting a browser
+    // timer optimisation impersonate one turns every alt-tab into a LAND command.
+    let ticks = 0;
+    const checkEvery = Math.max(1, Math.round(200 / CTRL_PERIOD_MS));
+
+    const onTick = () => {
+      const now = Date.now();
+      if (openRef.current && authedRef.current) {
+        const a = axesRef.current;
+        try {
+          wsRef.current.send(
+            JSON.stringify({
+              t: "ctrl",
+              seq: seqRef.current++,
+              ts: now,
+              roll: +a.roll.toFixed(4),
+              pitch: +a.pitch.toFixed(4),
+              thr: +a.throttle.toFixed(4),
+              yaw: +a.yaw.toFixed(4),
+            })
+          );
+          lastSendRef.current = now;
+        } catch {
+          /* socket closing; the stall check below will notice */
+        }
+      }
+      // Evaluated a few times a second rather than every tick: this runs at 50 Hz
+      // and setState here would re-render React on every stick frame, which the
+      // performance contract above forbids.
+      if (++ticks % checkEvery === 0) {
+        const live = !authedRef.current || now - lastSendRef.current < TX_STALL_MS;
+        if (live !== txOkRef.current) {
+          txOkRef.current = live;
+          setTxOk(live);
+        }
+      }
+    };
+
+    const ticker = startTicker(CTRL_PERIOD_MS, onTick);
 
     // stale-telemetry watchdog (only meaningful once connected to a drone)
     const staleTimer = setInterval(() => {
@@ -182,7 +264,7 @@ export function useDroneLink() {
     return () => {
       disposed = true;
       clearTimeout(reconnectTimer);
-      clearInterval(ctrlTimer);
+      ticker.stop();
       clearInterval(staleTimer);
       try {
         wsRef.current?.close();
@@ -203,5 +285,6 @@ export function useDroneLink() {
     authError,
     airborneIp,
     login,
+    txOk,
   };
 }

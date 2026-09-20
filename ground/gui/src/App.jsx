@@ -22,7 +22,7 @@ const NO_KEYS = new Set();
  * which is what a 4:3 feed on a landscape panel wants.
  */
 export default function App() {
-  const { axesRef, tlm, det, conn, sendCmd, authed, authBusy, authError, airborneIp, login } =
+  const { axesRef, tlm, det, conn, sendCmd, authed, authBusy, authError, airborneIp, login, txOk } =
     useDroneLink();
   const [takeoffOpen, setTakeoffOpen] = useState(false);
   // "touch" (on-screen gimbals) or "keyboard" (WASD + numpad). Exactly one owns
@@ -64,7 +64,7 @@ export default function App() {
   return (
     <div id="app">
       <TelemetryBar tlm={tlm} conn={conn} airborneIp={airborneIp} />
-      <ControlBanner tlm={tlm} />
+      <ControlBanner tlm={tlm} txOk={txOk} />
       <FailsafeBanner active={!!tlm?.failsafe} onResume={resume} />
       <TakeoverBanner active={!tlm?.failsafe && !!tlm?.pilot_takeover} onResume={resume} />
 

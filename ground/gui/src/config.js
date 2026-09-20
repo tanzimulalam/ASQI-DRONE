@@ -22,6 +22,13 @@ export const CTRL_PERIOD_MS = Math.round(1000 / CTRL_HZ);
 // Telemetry considered dead if none arrives within this window (ms).
 export const TLM_STALE_MS = 1500;
 
+// The cockpit is considered to have stopped transmitting if no control packet has
+// actually left the browser within this window (ms). Deliberately below the
+// airborne failsafe threshold (600 ms) so the operator is told the uplink has
+// died slightly before the aircraft acts on it, and well above the 20 ms send
+// period so ordinary jitter never raises it.
+export const TX_STALL_MS = 300;
+
 // ======= on-screen object detection =======
 // Inference runs on the GROUND JETSON's GPU (TensorRT via jetson-inference), not
 // in the browser: the `detector` service consumes the drone's MJPEG feed and the
