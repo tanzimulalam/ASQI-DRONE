@@ -492,6 +492,66 @@ throttle fully down to disarm. For direction checks use STABILIZE, where throttl
 maps straight to motor output. STABILIZE is not in the daemon's allowed modes, so
 drive it from the transmitter.
 
+**17. Omega runs JetPack 5, not 6.2, and the fleet is not uniform.** Piper's two
+Jetsons are JetPack 6.2 (L4T R36, Ubuntu 22.04, Python 3.10). Omega was flashed
+with JetPack 5.1.3 (L4T R35, Ubuntu 20.04, Python 3.8). The airborne package
+declares `requires-python = ">=3.10"`, so pip refuses to install it on Omega's
+system Python.
+
+Reflashing Omega to 6.2 is not just writing a new SD card: an Orin Nano Dev Kit
+on JP5 firmware needs its UEFI/QSPI updated first, which needs NVIDIA SDK Manager
+over USB in recovery mode from an x86 Ubuntu host. Until that happens, Omega runs
+Python 3.10 built from source into `~/opt/python310`, with a venv at
+`~/venv-airborne`, and a systemd drop-in at
+`/etc/systemd/system/drone-airborne.service.d/omega.conf` overriding
+`ExecStart` and `WorkingDirectory`. The unit file in the repo stays correct for
+Piper.
+
+Anything that behaves differently on the two aircraft should have the platform
+gap considered before the code is blamed.
+
+**18. ModemManager grabs the flight controller's serial port.** It probes any
+`/dev/ttyACM*` device looking for a cellular modem and holds it, so the daemon
+fails with `SerialException: [Errno 16] Device or resource busy`. Worse, it is a
+race at boot, so it fails intermittently. Disabled on Omega with
+`sudo systemctl disable --now ModemManager`.
+
+This becomes the wrong fix the moment a cellular modem is added to the airframe,
+which is planned. At that point re-enable ModemManager and add a udev rule
+setting `ENV{ID_MM_DEVICE_IGNORE}="1"` for the flight controller's USB id
+instead, so the modem works and the Pixhawk's port stays free.
+
+**19. The receiver must be set to PPM output, and the symptom is misleading.**
+The FS-iA6B's `PPM/CH1` pin only carries PPM if the receiver's output mode says
+so; otherwise it carries channel 1 alone as an ordinary servo signal, which the
+flight controller cannot decode. The symptom is a receiver LED that is **solid**,
+meaning bound and receiving, while every channel at the flight controller reads
+zero and Mission Planner refuses with `Bad channel 1 input`.
+
+Output mode lives in the transmitter menu under `System setup > RX setup >
+Output mode` and is configured over the air, so it can only be changed once the
+receiver is already bound. Binding first and then finding the output mode wrong
+is two separate failures stacked, and they look identical from the flight
+controller.
+
+**20. Compass slots reshuffle on reboot when `COMPASS_USE*` changes.** On Omega
+the external GPS compass (IST8310, I2C bus 0 address 12, dev id 658433) was
+calibrated and in slot 1, with the Pixhawk 6C's own internal IST8310 (bus 1
+address 14, dev id 658953) uncalibrated in slot 2. Setting `COMPASS_USE2=0` and
+rebooting swapped them: the **internal** compass became slot 1 and primary with
+zero offsets, producing `PreArm: Compass not calibrated`, while the calibrated
+external one sat in the slot that had just been disabled.
+
+The fix is the priority list, not the use flags: set `COMPASS_PRIO1_ID` to the
+device id you want primary and reboot. The calibration does follow the device
+across the swap, so no recalibration was needed. Read `COMPASS_DEV_ID`,
+`COMPASS_OFS_X` and `COMPASS_PRIO1_ID` together, because offsets are stored per
+slot while identity is per device, and only reading both tells you which compass
+the numbers belong to.
+
+Device ids decode as `bus_type | bus<<3 | address<<8 | devtype<<16`, which is how
+658433 and 658953 were identified as two different IST8310s rather than one.
+
 ---
 
 ## 10. Immediate next steps
@@ -608,3 +668,61 @@ discussion ever did.
 auth handshake, which means the fake airborne side must reply with telemetry to a
 token-bearing probe. Not hard, but it touches the auth path that was recently
 fixed, so it deserves care.
+
+
+---
+
+## 13. The fleet: Piper and Omega
+
+Two airframes as of 2026-09-20. **Piper** is the aircraft flown through
+2026-09-17; every measurement, log reference and gotcha written before that date
+is about Piper. **Omega** is a second X500 built to the same design, brought up
+on 2026-09-19/20.
+
+Always confirm which aircraft a command is aimed at. Both drone Jetsons will
+answer to similar names and both flight controllers report similar parameters.
+
+### What differs, and must stay different
+
+| | Piper | Omega |
+|---|---|---|
+| `SYSID_THISMAV` | 1 | **2** |
+| Session token | in its own `/etc/drone/drone.env` | its own, generated at install |
+| Hostname | `john-desktop` | `omega` |
+| RC transmitter | its own | its own, separately bound |
+
+`SYSID_THISMAV` must be unique per aircraft or a ground station cannot tell two
+vehicles apart. Each aircraft also needs its own bound transmitter: one
+transmitter bound to two receivers commands **both** aircraft simultaneously,
+and model memory does not prevent that because the RF identity belongs to the
+transmitter, not the model.
+
+### What differs and should not
+
+Omega is on JetPack 5 against Piper's 6.2 (gotcha 17). That gap should close
+when there is an x86 Ubuntu host available to reflash Omega.
+
+Omega runs ArduCopter 4.6.3. Piper's firmware version has not been read back and
+should be, since every parameter name in section 8 comes from Piper.
+
+### Omega's bring-up, for when a third aircraft is built
+
+A fresh flight controller has **nothing** configured. On Omega, before any of it
+was touched: `FRAME_CLASS=0` so it could not arm at all, accelerometer, compass
+and radio all at factory defaults, `SYSID_MYGCS=255` which would have reproduced
+gotcha 1 exactly, `BATT_ARM_VOLT=0` so it would arm on a flat pack, both battery
+failsafe actions 0, no geofence, no GCS failsafe, and all three flight mode
+switch positions set to STABILIZE.
+
+Order that worked:
+
+1. Frame type, accelerometer, compass and radio calibration in Mission Planner,
+   with the flight controller's USB moved to a laptop
+2. `SYSID_MYGCS=250`, `SYSID_THISMAV=<unique>`, `FENCE_ENABLE=1`,
+   `FS_GCS_ENABLE=1`, the four `BATT_*` failsafe values, `FLTMODE4=2`,
+   `FLTMODE6=5` via `tools/params.py`
+3. Compass priority, if the board has an internal magnetometer (gotcha 20)
+4. `systemd` install and the session token
+
+Radio calibration has to come before the parameter writes, because it rewrites
+the `RC*` values.

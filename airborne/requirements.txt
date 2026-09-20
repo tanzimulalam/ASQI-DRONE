@@ -1,2 +1,9 @@
-# Airborne daemon (drone-side Jetson). Only pymavlink is needed; already installed.
+# Airborne daemon (drone-side Jetson).
+#
+# pyserial is not a declared dependency of pymavlink, but every serial
+# connection needs it. It happens to be present on Piper's JetPack 6.2 image,
+# which is why this file used to claim only pymavlink was required. On a clean
+# machine that claim is false: Omega failed with "No module named 'serial'" on
+# the first parameter read.
 pymavlink>=2.4
+pyserial>=3.5
