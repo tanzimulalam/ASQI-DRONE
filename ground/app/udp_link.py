@@ -107,6 +107,51 @@ class UdpLink:
         finally:
             transport.close()
 
+    async def probe_telemetry(
+        self, ip: str, token: str, timeout: float
+    ) -> dict[str, Any] | None:
+        """Like :meth:`probe`, but return the telemetry the drone replied with.
+
+        Used for the fleet screen's read-only health check. It keeps the property
+        that makes :meth:`probe` trustworthy: a freshly bound socket the daemon has
+        never seen, so a telemetry reply can only mean this token was accepted.
+        :meth:`probe` is left alone because it guards the login gate.
+
+        The daemon addresses telemetry to whoever last sent it a valid packet, so
+        this briefly becomes that destination. Never call it on the aircraft of the
+        active session; that would steal the cockpit's telemetry mid-flight.
+        """
+        loop = self._loop or asyncio.get_running_loop()
+        fut: asyncio.Future[dict[str, Any]] = loop.create_future()
+
+        class _HealthProtocol(asyncio.DatagramProtocol):
+            def datagram_received(self, data: bytes, addr: tuple[str, int]) -> None:
+                if addr[0] != ip or fut.done():
+                    return
+                try:
+                    msg = json.loads(data)
+                except ValueError:
+                    return
+                if isinstance(msg, dict) and msg.get("t") == "tlm":
+                    fut.set_result(msg)
+
+            def error_received(self, exc: Exception) -> None:  # pragma: no cover
+                log.debug("health probe socket error: %s", exc)
+
+        transport, _ = await loop.create_datagram_endpoint(
+            _HealthProtocol, local_addr=(self._bind_host, 0)
+        )
+        try:
+            transport.sendto(
+                json.dumps({"t": "hb", "token": token}, separators=(",", ":")).encode("utf-8"),
+                (ip, self._port),
+            )
+            return await asyncio.wait_for(fut, timeout)
+        except asyncio.TimeoutError:
+            return None
+        finally:
+            transport.close()
+
     @property
     def latest_telemetry(self) -> dict[str, Any] | None:
         return self._latest

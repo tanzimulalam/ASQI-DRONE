@@ -25,6 +25,14 @@ class Settings(BaseSettings):
     # Per-candidate wait for a telemetry reply that proves the password was accepted.
     auth_probe_timeout_s: float = Field(default=0.8, gt=0, le=10)
 
+    # Named aircraft this ground station can fly, with tokens used only for the
+    # fleet screen's read-only health probes (see app/fleet.py). Holds secrets, so
+    # keep it at mode 0640 owned by root with the bridge's group. Absent, the
+    # candidate IP list above is used and health is unavailable.
+    fleet_file: Path = Path("/etc/drone/fleet.json")
+    # How long a health probe waits for the daemon's telemetry reply.
+    health_probe_timeout_s: float = Field(default=1.5, gt=0, le=10)
+
     # HTTP/WebSocket server (single port serves GUI + /ws).
     host: str = "0.0.0.0"
     port: int = Field(default=8000, ge=1, le=65535)

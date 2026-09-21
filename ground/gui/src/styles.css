@@ -1402,6 +1402,259 @@ button.cmd {
   line-height: 1.6;
 }
 
+/* ============================== fleet screen ==============================
+   Pre-flight view of every aircraft. Reuses the login overlay's backdrop and the
+   card language (gradient panel, MTSU rule across the top), with the rule
+   coloured by each aircraft's state so status reads from across the room. */
+
+#fleet-shell {
+  width: min(96vw, 1180px);
+  max-height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(12px, 1.3vw, 22px);
+  padding: clamp(4px, 0.6vw, 10px);
+}
+
+.fleet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+  flex-wrap: wrap;
+}
+
+.fleet-head .login-state {
+  flex: 0 1 auto;
+  max-width: 100%;
+}
+
+.fleet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: clamp(12px, 1.3vw, 22px);
+}
+
+.fleet-empty {
+  color: var(--muted);
+  font-family: var(--num);
+  font-size: var(--fs-hint);
+  padding: 2em 0;
+  text-align: center;
+}
+
+.fleet-card {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(8px, 0.8vw, 14px);
+  padding: clamp(16px, 1.6vw, 28px);
+  background: linear-gradient(180deg, rgba(13, 30, 48, 0.96) 0%, rgba(5, 10, 16, 0.96) 100%);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.6);
+}
+
+/* State rule across the top of each card. */
+.fleet-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--line);
+}
+.fleet-card.s-g::before { background: linear-gradient(90deg, var(--ok), transparent); }
+.fleet-card.s-y::before { background: linear-gradient(90deg, var(--warn), transparent); }
+.fleet-card.s-x::before { background: linear-gradient(90deg, var(--faint), transparent); }
+.fleet-card.s-b::before { background: linear-gradient(90deg, var(--mt-blue), var(--accent), transparent); }
+.fleet-card.s-x { opacity: 0.78; }
+
+.fleet-cardhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6em;
+}
+
+.fleet-name {
+  font-size: clamp(20px, 1.9vw, 34px);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--txt);
+  line-height: 1;
+}
+
+.fleet-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
+  padding: 0.3em 0.6em;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-family: var(--num);
+  font-size: var(--fs-label);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  white-space: nowrap;
+  color: var(--muted);
+}
+.fleet-badge.st-g { color: var(--ok); border-color: rgba(36, 209, 126, 0.35); }
+.fleet-badge.st-y { color: var(--warn); border-color: rgba(245, 165, 36, 0.4); }
+.fleet-badge.st-x { color: var(--muted); border-color: var(--line); }
+.fleet-badge.st-b { color: var(--accent); border-color: rgba(63, 162, 232, 0.5); }
+
+.fleet-ip {
+  margin-top: -0.3em;
+  font-family: var(--num);
+  font-size: var(--fs-label);
+  color: var(--faint);
+  letter-spacing: 0.06em;
+}
+
+.fleet-body { min-height: 3.4em; }
+
+.fleet-note {
+  margin: 0;
+  font-size: var(--fs-hint);
+  color: var(--muted);
+  line-height: 1.55;
+}
+.fleet-note.warn { color: #ffd489; }
+
+.fleet-grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  margin: 0;
+  background: var(--line-soft);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.fleet-cell {
+  background: rgba(0, 0, 0, 0.32);
+  padding: 0.5em 0.7em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15em;
+  min-width: 0;
+}
+
+.fleet-cell dt {
+  font-family: var(--num);
+  font-size: var(--fs-label);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.fleet-cell dd {
+  margin: 0;
+  font-family: var(--num);
+  font-size: var(--fs-value);
+  font-weight: 700;
+  color: var(--txt);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fleet-cell dd.ok { color: var(--ok); }
+.fleet-cell dd.warn { color: var(--warn); }
+.fleet-cell dd.bad { color: var(--bad); }
+
+.fleet-status {
+  font-family: var(--num);
+  font-size: var(--fs-hint);
+  color: var(--muted);
+  padding: 0.45em 0.65em;
+  border-left: 2px solid var(--line);
+  background: rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fleet-status.warn { border-left-color: var(--warn); color: #ffd489; }
+
+.fleet-age {
+  font-family: var(--num);
+  font-size: var(--fs-label);
+  color: var(--faint);
+  text-align: right;
+}
+
+.fleet-actions {
+  display: flex;
+  gap: 0.6em;
+  margin-top: auto;
+}
+
+.fleet-actions button {
+  flex: 1;
+  min-height: clamp(38px, 4.2vh, 58px);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  font-size: var(--fs-btn);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #02121f;
+  background: linear-gradient(180deg, #56b7f2 0%, var(--mt-blue) 100%);
+  cursor: pointer;
+  transition: filter 0.12s;
+}
+
+.fleet-actions button.ghost {
+  color: var(--accent);
+  background: rgba(63, 162, 232, 0.06);
+}
+
+.fleet-actions button:disabled {
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--faint);
+  cursor: default;
+}
+
+.fleet-actions button:active:not(:disabled) { filter: brightness(1.14); }
+
+.fleet-login {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6em;
+  margin-top: auto;
+}
+
+.fleet-login input {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--txt);
+  font-size: var(--fs-value);
+  font-weight: 600;
+  padding: 0.6em 0.8em;
+  outline: none;
+  letter-spacing: 0.18em;
+  font-family: var(--num);
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.fleet-login input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(63, 162, 232, 0.16);
+}
+
+.fleet-err {
+  font-family: var(--num);
+  font-size: var(--fs-hint);
+  color: #ffb0b0;
+}
+
 /* ============================== event ticker ============================== */
 
 #evt {

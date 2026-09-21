@@ -48,6 +48,11 @@ function startTicker(periodMs, onTick) {
   }
 }
 
+/** Login packet. The drone field is only sent when a specific aircraft was chosen. */
+function authPacket(password, drone) {
+  return drone ? { t: "auth", password, drone } : { t: "auth", password };
+}
+
 /**
  * Owns the WebSocket to the ground bridge, the login handshake, the 50 Hz control
  * uplink, and the telemetry downlink.
@@ -71,6 +76,10 @@ export function useDroneLink() {
   const openRef = useRef(false);
   const authedRef = useRef(false);
   const passwordRef = useRef(null);
+  // Which aircraft the password belongs to. Kept alongside the password so a
+  // reconnect after a network blip goes back to the SAME aircraft, rather than
+  // letting the bridge probe every candidate and connect to whichever answers.
+  const droneRef = useRef(null);
   const seqRef = useRef(0);
   const lastTlmRef = useRef(0);
   // When a control packet last actually left this browser. Drives txOk, which is
@@ -88,6 +97,9 @@ export function useDroneLink() {
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState(null);
   const [airborneIp, setAirborneIp] = useState(null);
+  // Fleet name of the aircraft this session is flying, e.g. "Piper". Shown in
+  // the cockpit so the operator can never be unsure which aircraft they command.
+  const [airborneName, setAirborneName] = useState(null);
   const [txOk, setTxOk] = useState(true);
 
   const setAuthedBoth = (v) => {
@@ -114,12 +126,15 @@ export function useDroneLink() {
     [sendRaw]
   );
 
+  // `drone` is the fleet name to log into. Omitting it keeps the original
+  // behaviour: the bridge probes every candidate and whichever accepts connects.
   const login = useCallback(
-    (password) => {
+    (password, drone = null) => {
       passwordRef.current = password;
+      droneRef.current = drone;
       setAuthError(null);
       setAuthBusy(true);
-      if (openRef.current) sendRaw({ t: "auth", password });
+      if (openRef.current) sendRaw(authPacket(password, drone));
       // if the socket isn't open yet, onopen will send it
     },
     [sendRaw]
@@ -139,10 +154,11 @@ export function useDroneLink() {
         openRef.current = true;
         backoff = 500;
         setConn({ label: "CONNECTED", cls: "y" });
-        // silently re-authenticate across reconnects if we have a password
+        // silently re-authenticate across reconnects if we have a password, to
+        // the same aircraft as before
         if (passwordRef.current) {
           setAuthBusy(true);
-          ws.send(JSON.stringify({ t: "auth", password: passwordRef.current }));
+          ws.send(JSON.stringify(authPacket(passwordRef.current, droneRef.current)));
         }
       };
       ws.onclose = () => {
@@ -175,12 +191,14 @@ export function useDroneLink() {
             setAuthBusy(false);
             setAuthError(null);
             setAirborneIp(msg.airborne ?? null);
+            setAirborneName(msg.drone ?? null);
             break;
           case "auth_fail":
             setAuthedBoth(false);
             setAuthBusy(false);
             setAuthError(msg.reason || "password rejected");
             passwordRef.current = null; // don't auto-retry a bad password
+            droneRef.current = null;
             break;
           case "auth_required":
             setAuthedBoth(false);
@@ -284,6 +302,7 @@ export function useDroneLink() {
     authBusy,
     authError,
     airborneIp,
+    airborneName,
     login,
     txOk,
   };
