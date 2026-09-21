@@ -65,6 +65,10 @@ class Drone:
     name: str
     ip: str
     token: str | None = None
+    # False for an airframe still being built: listed so the operator can see the
+    # whole fleet, but with no Jetson to reach, nothing to probe and nothing to fly.
+    # Kept distinct from "offline", which means it exists and is powered down.
+    ready: bool = True
 
     @property
     def key(self) -> str:
@@ -77,19 +81,29 @@ def load_fleet(path: Path | None, fallback_ips: list[str]) -> list[Drone]:
     if path is not None:
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
-            drones = [
-                Drone(
-                    name=str(d["name"]).strip(),
-                    ip=str(d["ip"]).strip(),
-                    token=(str(d["token"]) if d.get("token") else None),
+            drones = []
+            for d in raw.get("drones", []):
+                ready = bool(d.get("ready", True))
+                # An aircraft in build has no address yet; a ready one must have one.
+                ip = str(d.get("ip", "")).strip()
+                if ready and not ip:
+                    raise ValueError(f"aircraft {d.get('name')!r} is ready but has no ip")
+                drones.append(
+                    Drone(
+                        name=str(d["name"]).strip(),
+                        ip=ip,
+                        token=(str(d["token"]) if d.get("token") else None),
+                        ready=ready,
+                    )
                 )
-                for d in raw.get("drones", [])
-            ]
             names = [d.key for d in drones]
             if len(names) != len(set(names)):
                 raise ValueError("duplicate drone names in fleet file")
             if drones:
-                log.info("fleet: %s", ", ".join(f"{d.name}@{d.ip}" for d in drones))
+                log.info(
+                    "fleet: %s",
+                    ", ".join(f"{d.name}@{d.ip}" if d.ready else f"{d.name} (in build)" for d in drones),
+                )
                 return drones
         except FileNotFoundError:
             log.info("no fleet file at %s; using candidate IPs", path)

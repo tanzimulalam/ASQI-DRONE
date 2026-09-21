@@ -16,6 +16,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
  *   daemon sends telemetry to whoever last contacted it; that aircraft's card
  *   shows its live session telemetry instead.
  *
+ * An aircraft still being built is listed with its own state rather than as
+ * offline: offline means it exists and is powered down, which would be untrue.
+ *
  * Flying still requires typing that aircraft's password. The bridge holds tokens
  * only to read health, never to grant control, and never sends them here.
  *
@@ -27,10 +30,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
  */
 
 const POLL_MS = 4000;
-// Both aircraft are configured with BATT_ARM_VOLT 14.0, read off the vehicles.
-// Below that they will refuse to arm, which makes it a fact rather than a guess.
+// Both flown aircraft are configured with BATT_ARM_VOLT 14.0, read off the
+// vehicles. Below that they refuse to arm, so it is a fact rather than a guess.
 const BATT_ARM_V = 14.0;
 const BATT_LOW_V = 14.8;
+// Under a volt is no flight battery at all (bench, Jetson on wall power), not a
+// flat pack. Showing "0.01 V" in red would read as an emergency.
+const NO_BATTERY_V = 1.0;
 
 export default function FleetScreen({ wsReady, busy, error, onLogin }) {
   const [drones, setDrones] = useState(null);
@@ -38,8 +44,8 @@ export default function FleetScreen({ wsReady, busy, error, onLogin }) {
   const [checking, setChecking] = useState({});
   const [flying, setFlying] = useState(null); // name whose password field is open
   const [logoOk, setLogoOk] = useState(true);
-  // Aircraft we have already auto-checked since they came online, so a card that
-  // flaps online/offline is not probed on every poll.
+  // Aircraft already auto-checked since they came online, so a card that flaps
+  // online/offline is not probed on every poll.
   const autoChecked = useRef(new Set());
 
   const refresh = useCallback(async () => {
@@ -97,7 +103,7 @@ export default function FleetScreen({ wsReady, busy, error, onLogin }) {
     };
   }, [refresh, checkHealth]);
 
-  const online = drones ? drones.filter((d) => d.reachable).length : 0;
+  const counts = summarise(drones);
 
   let state, stateCls;
   if (fetchErr) {
@@ -110,8 +116,8 @@ export default function FleetScreen({ wsReady, busy, error, onLogin }) {
     state = "reading fleet";
     stateCls = "y";
   } else {
-    state = `bridge online · ${online} of ${drones.length} aircraft reachable`;
-    stateCls = online > 0 ? "g" : "y";
+    state = "ground bridge online";
+    stateCls = "g";
   }
 
   return (
@@ -137,16 +143,28 @@ export default function FleetScreen({ wsReady, busy, error, onLogin }) {
             </div>
           </div>
           <div className={`login-state ${stateCls}`}>
-            <span className={`dot ${stateCls}`} />
+            <span className={`dot ${stateCls}${stateCls === "g" ? " pulse" : ""}`} />
             <span className="login-statetext">{state}</span>
           </div>
         </header>
 
-        <div className="login-title">
-          <span className="login-rule" />
-          <span>Ground Control Station · Fleet</span>
-          <span className="login-rule" />
+        <div className="fleet-hero">
+          <h1 className="fleet-herotitle">Unmanned Aerial Operations</h1>
+          <div className="login-title">
+            <span className="login-rule" />
+            <span>Ground Control Station · Fleet</span>
+            <span className="login-rule" />
+          </div>
         </div>
+
+        {drones && (
+          <div className="fleet-summary" aria-label="Fleet summary">
+            <Stat n={counts.total} label={counts.total === 1 ? "aircraft" : "aircraft"} />
+            <Stat n={counts.online} label="online" cls="g" />
+            <Stat n={counts.offline} label="offline" cls="x" />
+            {counts.build > 0 && <Stat n={counts.build} label="in build" cls="build" />}
+          </div>
+        )}
 
         <div className="fleet-grid">
           {drones === null && !fetchErr && <div className="fleet-empty">Reading fleet…</div>}
@@ -168,20 +186,46 @@ export default function FleetScreen({ wsReady, busy, error, onLogin }) {
             ))}
         </div>
 
-        <p className="login-hint">
+        <p className="login-hint fleet-foot">
           Reachability updates on its own. Health is read from each aircraft's flight
           daemon when it comes online and whenever you press Check health. Flying an
-          aircraft always asks for its password; the aircraft itself decides whether
-          to accept it.
+          aircraft always asks for its password, and the aircraft itself decides
+          whether to accept it.
         </p>
       </div>
     </div>
   );
 }
 
+function summarise(drones) {
+  const c = { total: 0, online: 0, offline: 0, build: 0 };
+  if (!drones) return c;
+  for (const d of drones) {
+    c.total += 1;
+    if (d.ready === false) c.build += 1;
+    else if (d.reachable) c.online += 1;
+    else c.offline += 1;
+  }
+  return c;
+}
+
+function Stat({ n, label, cls = "" }) {
+  // Prefixed for the same reason as the badges: bare g/x are global dot fills.
+  return (
+    <div className={`fleet-stat${cls ? ` stat-${cls}` : ""}`}>
+      <span className="fleet-statn">{n}</span>
+      <span className="fleet-statl">{label}</span>
+    </div>
+  );
+}
+
 /** Classify one card. Every visual state traces back to something the bridge knows. */
 function cardState(d) {
-  if (d.active) return { key: "flying", label: "IN FLIGHT SESSION", cls: "b" };
+  // Strictly false, not merely falsy: a bridge older than the "in build" state
+  // sends no ready field at all, and every aircraft it knows is a real one.
+  // Testing !d.ready showed every aircraft as in build against such a bridge.
+  if (d.ready === false) return { key: "build", label: "IN BUILD", cls: "build" };
+  if (d.active) return { key: "flying", label: "IN SESSION", cls: "b" };
   if (!d.reachable) return { key: "offline", label: "OFFLINE", cls: "x" };
   if (!d.can_check_health) return { key: "nohealth", label: "ONLINE", cls: "g" };
   if (d.health) return { key: "healthy", label: "ONLINE", cls: "g" };
@@ -204,6 +248,7 @@ function DroneCard({
   const [pw, setPw] = useState("");
   const st = cardState(d);
   const h = d.health;
+  const live = st.cls === "g" || st.cls === "b";
 
   const submit = (e) => {
     e.preventDefault();
@@ -213,22 +258,31 @@ function DroneCard({
   return (
     <article className={`fleet-card s-${st.cls}`}>
       <div className="fleet-cardhead">
-        <div className="fleet-name">{d.name}</div>
+        <div className="fleet-namewrap">
+          <span className="fleet-name">{d.name}</span>
+          <span className="fleet-suffix">Aircraft</span>
+        </div>
         {/* Prefixed modifier: the bare g/y/x classes are global dot fills and
             would paint the whole badge solid, hiding its text. */}
         <div className={`fleet-badge st-${st.cls}`}>
-          <span className={`dot ${st.cls === "b" ? "g" : st.cls}`} />
+          <span className={`dot ${badgeDot(st.cls)}${live ? " pulse" : ""}`} />
           {st.label}
         </div>
       </div>
-      <div className="fleet-ip">{d.ip}</div>
+      <div className="fleet-ip">{d.ip || "not yet commissioned"}</div>
 
       <div className="fleet-body">
+        {st.key === "build" && (
+          <EmptyState icon={<QuadIcon dashed />}>
+            Airframe still being built. It will come online here once its Jetson is
+            set up and it is given an address in the fleet file.
+          </EmptyState>
+        )}
         {st.key === "offline" && (
-          <p className="fleet-note">
-            Jetson not reachable. Check the aircraft is powered and, for an aircraft
-            on the drone hotspot, that the ground station's USB Wi-Fi adapter is in.
-          </p>
+          <EmptyState icon={<QuadIcon />}>
+            Not reachable. Check the aircraft is powered and, on the drone hotspot,
+            that the ground station's USB Wi-Fi adapter is in.
+          </EmptyState>
         )}
         {st.key === "nohealth" && (
           <p className="fleet-note">
@@ -256,7 +310,13 @@ function DroneCard({
         <div className="fleet-age">checked {fmtAge(d.health_age_s)} ago</div>
       )}
 
-      {open ? (
+      {st.key === "build" ? (
+        <div className="fleet-actions">
+          <button type="button" disabled>
+            In build
+          </button>
+        </div>
+      ) : open ? (
         <form className="fleet-login" onSubmit={submit}>
           <input
             type="password"
@@ -296,10 +356,43 @@ function DroneCard({
   );
 }
 
-// A reading this low is not a flat pack, it is no flight battery at all: an
-// aircraft on the bench with its Jetson on wall power and the flight controller
-// fed over USB. Showing "0.01 V" in red would read as an emergency.
-const NO_BATTERY_V = 1.0;
+function badgeDot(cls) {
+  if (cls === "b") return "g";
+  if (cls === "build") return "x";
+  return cls;
+}
+
+function EmptyState({ icon, children }) {
+  return (
+    <div className="fleet-emptystate">
+      <div className="fleet-emptyicon">{icon}</div>
+      <p className="fleet-note">{children}</p>
+    </div>
+  );
+}
+
+/** Quad-X silhouette. Dashed for an airframe still being built. */
+function QuadIcon({ dashed = false }) {
+  return (
+    <svg
+      viewBox="0 0 64 64"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeDasharray={dashed ? "4 4" : undefined}
+      aria-hidden="true"
+    >
+      <line x1="18" y1="18" x2="46" y2="46" />
+      <line x1="46" y1="18" x2="18" y2="46" />
+      <circle cx="16" cy="16" r="9" />
+      <circle cx="48" cy="16" r="9" />
+      <circle cx="16" cy="48" r="9" />
+      <circle cx="48" cy="48" r="9" />
+      <rect x="26" y="26" width="12" height="12" rx="3" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
 
 function HealthGrid({ h, flying }) {
   const v = h.batt_v;

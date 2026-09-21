@@ -739,9 +739,15 @@ ground Jetson:
 ```json
 {"drones": [
   {"name": "Piper", "ip": "10.42.0.1",    "token": "..."},
-  {"name": "Omega", "ip": "10.130.143.5", "token": "..."}
+  {"name": "Omega", "ip": "10.130.143.5", "token": "..."},
+  {"name": "Vulkan", "ready": false}
 ]}
 ```
+
+Vulkan is the third airframe, still being built. `"ready": false` lists it on the
+fleet screen as IN BUILD with no address and no token: it is never reached,
+never health-checked and cannot be flown. When it is ready, give it an `ip` and
+`token`, drop the `ready` field, and restart `ground-bridge`.
 
 It holds tokens, so it is mode 0640 owned by `root:john`. The tokens are used only
 for read-only health probes; they never reach a browser and they do not grant
@@ -757,6 +763,17 @@ Two properties the code relies on, both covered by `tests/test_fleet.py`:
   link loss either: heartbeats only call `note_ground`, never the control-age clock.
 - Reachability is a TCP connect to the drone Jetson's port 22, so it polls every
   few seconds without touching the aircraft's UDP control port.
+
+The cockpit has a **Fleet** button at the left of the top bar. It ends the drone
+session and returns to the fleet screen. It is disabled while the aircraft is
+armed, so it cannot be pressed by accident in flight.
+
+Before 2026-09-21 a drone session never ended once a browser had logged in: the
+websocket handler counted clients before the hub's cancelled writer task had
+removed itself, saw one still there, and never checked again. The aircraft then
+stayed "in session" and its health checks were refused. The handler now awaits
+the cancelled tasks first; `test_closing_the_browser_ends_the_drone_session`
+covers it.
 
 The ground bridge now runs from `~/Documents/ASQI-DRONE/ground` via the drop-in
 `/etc/systemd/system/ground-bridge.service.d/asqi.conf`. Removing that file and
