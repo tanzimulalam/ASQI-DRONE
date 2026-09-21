@@ -103,8 +103,6 @@ export default function FleetScreen({ wsReady, busy, error, onLogin }) {
     };
   }, [refresh, checkHealth]);
 
-  const counts = summarise(drones);
-
   let state, stateCls;
   if (fetchErr) {
     state = `ground bridge unreachable · ${fetchErr}`;
@@ -157,15 +155,6 @@ export default function FleetScreen({ wsReady, busy, error, onLogin }) {
           </div>
         </div>
 
-        {drones && (
-          <div className="fleet-summary" aria-label="Fleet summary">
-            <Stat n={counts.total} label={counts.total === 1 ? "aircraft" : "aircraft"} />
-            <Stat n={counts.online} label="online" cls="g" />
-            <Stat n={counts.offline} label="offline" cls="r" />
-            {counts.build > 0 && <Stat n={counts.build} label="in build" cls="build" />}
-          </div>
-        )}
-
         <div className="fleet-grid">
           {drones === null && !fetchErr && <div className="fleet-empty">Reading fleet…</div>}
           {drones &&
@@ -193,28 +182,6 @@ export default function FleetScreen({ wsReady, busy, error, onLogin }) {
           whether to accept it.
         </p>
       </div>
-    </div>
-  );
-}
-
-function summarise(drones) {
-  const c = { total: 0, online: 0, offline: 0, build: 0 };
-  if (!drones) return c;
-  for (const d of drones) {
-    c.total += 1;
-    if (d.ready === false) c.build += 1;
-    else if (d.reachable) c.online += 1;
-    else c.offline += 1;
-  }
-  return c;
-}
-
-function Stat({ n, label, cls = "" }) {
-  // Prefixed for the same reason as the badges: bare g/x are global dot fills.
-  return (
-    <div className={`fleet-stat${cls ? ` stat-${cls}` : ""}`}>
-      <span className="fleet-statn">{n}</span>
-      <span className="fleet-statl">{label}</span>
     </div>
   );
 }
