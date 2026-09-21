@@ -35,6 +35,22 @@ esac
 
 [ -f "$PARAMS" ] || { echo "cannot find $PARAMS" >&2; exit 1; }
 
+# Use the interpreter the daemon itself runs under, because that is the one known
+# to have pymavlink. On Piper that is the system python3; on Omega (JetPack 5) it
+# is a venv, and the system python3 has no pymavlink at all. BENCHMODE_PYTHON
+# overrides both.
+PY="${BENCHMODE_PYTHON:-}"
+if [ -z "$PY" ]; then
+    PY="$(systemctl show -p ExecStart --value "$UNIT" 2>/dev/null \
+        | sed -n 's/.*path=\([^ ;]*\).*/\1/p' | head -n1)"
+    case "$PY" in
+        *python*) ;;
+        *) PY=python3 ;;
+    esac
+fi
+"$PY" -c "import pymavlink" 2>/dev/null \
+    || { echo "$PY has no pymavlink; set BENCHMODE_PYTHON to one that does" >&2; exit 1; }
+
 restart_daemon() {
     sudo systemctl start "$UNIT" || true
     sleep 1
@@ -46,17 +62,17 @@ trap restart_daemon EXIT
 
 rc=0
 if [ -z "$want" ]; then
-    python3 "$PARAMS" get $NAMES || rc=$?
+    "$PY" "$PARAMS" get $NAMES || rc=$?
 else
     set -- $NAMES
     assignments=""
     for n in "$@"; do assignments="$assignments $n=$want"; done
     # shellcheck disable=SC2086
-    python3 "$PARAMS" set $assignments || rc=$?
+    "$PY" "$PARAMS" set $assignments || rc=$?
     if [ "$rc" -eq 0 ]; then
         echo
         echo "read back from the vehicle:"
-        python3 "$PARAMS" get $NAMES || rc=$?
+        "$PY" "$PARAMS" get $NAMES || rc=$?
     fi
 fi
 
