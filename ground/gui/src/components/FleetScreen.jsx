@@ -202,7 +202,7 @@ function summarise(drones) {
   if (!drones) return c;
   for (const d of drones) {
     c.total += 1;
-    if (!d.ready) c.build += 1;
+    if (d.ready === false) c.build += 1;
     else if (d.reachable) c.online += 1;
     else c.offline += 1;
   }
@@ -221,7 +221,10 @@ function Stat({ n, label, cls = "" }) {
 
 /** Classify one card. Every visual state traces back to something the bridge knows. */
 function cardState(d) {
-  if (!d.ready) return { key: "build", label: "IN BUILD", cls: "build" };
+  // Strictly false, not merely falsy: a bridge older than the "in build" state
+  // sends no ready field at all, and every aircraft it knows is a real one.
+  // Testing !d.ready showed every aircraft as in build against such a bridge.
+  if (d.ready === false) return { key: "build", label: "IN BUILD", cls: "build" };
   if (d.active) return { key: "flying", label: "IN SESSION", cls: "b" };
   if (!d.reachable) return { key: "offline", label: "OFFLINE", cls: "x" };
   if (!d.can_check_health) return { key: "nohealth", label: "ONLINE", cls: "g" };
