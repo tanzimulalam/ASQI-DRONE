@@ -1,4 +1,4 @@
-# mtsuissl-airborne — drone-side control daemon
+# Airborne: the drone-side control daemon
 
 ASQI Lab (Autonomous Systems & Quantum Intelligence Laboratory), Middle Tennessee
 State University.
@@ -9,14 +9,19 @@ GUI, a **drone** one is wired to the Pixhawk 6C over USB and is the hardened
 control boundary.
 
 Ground-side code, GUI and operator documentation live in
-[`mtsuissl-ground`](https://github.com/mtsuissl/mtsuissl-ground). Start there if
-you want to fly it rather than change it.
+[`../ground`](../ground/README.md). Start there if you want to fly it rather than
+change it. The project overview is the [root README](../README.md).
+
+This half runs on every aircraft's Jetson. It was written during Piper's
+bring-up, so the measured values below are Piper's; how Omega differs, and the
+order that worked for bringing up a second aircraft, are in
+[HANDOFF section 13](../ground/HANDOFF.md#13-the-fleet-piper-and-omega).
 
 ```
  Browser (ground Jetson screen, or a phone on the same network)
     │  WebSocket JSON
     ▼
- GROUND Jetson ──────────  mtsuissl-ground: app/ (GUI + WS↔UDP relay)
+ GROUND Jetson ──────────  ground/app (GUI + WS↔UDP relay)
     │  UDP 50 Hz, port 14650
     ▼
  DRONE Jetson  ──────────  airborne_daemon (validation + MAVLink)  [this repo]
@@ -165,7 +170,7 @@ Stop the service first, or the two will fight over UDP 14650:
 
 ### Drone (airborne) Jetson — this box
 ```bash
-cd ~/Documents/mtsuissl-airborne
+cd ~/Documents/ASQI-DRONE/airborne
 python3 -m airborne_daemon --session-token 'a-long-shared-secret'
 # other flags: --udp-port, --mav-device, --log-level DEBUG   (see --help)
 ```
@@ -175,7 +180,7 @@ Run the tests with `python3 -m pytest`.
 
 ### Ground Jetson (serves the GUI)
 ```bash
-cd ~/Documents/mtsuissl-ground
+cd ~/Documents/ASQI-DRONE/ground
 pip3 install -r requirements.txt                 # or: pip3 install --user -r requirements.txt
 # Pass the drone's IP as the first argument (the token must match the drone):
 python3 -m app 10.131.237.193 --token 'a-long-shared-secret'
@@ -188,8 +193,8 @@ Jetson. Health check: `curl http://<ground-ip>:8000/healthz`.
 > **Which drone IP?** For bench testing over the wire, use `10.131.237.193`. For
 > flight, use the drone's hotspot IP (e.g. `10.42.0.1`) — see the link section.
 
-> **Copy the ground repo to the ground Jetson:**
-> `scp -r ~/Documents/mtsuissl-ground john@10.131.237.193:~/Documents/`
+> **Getting code onto a Jetson:** neither can reach GitHub, so changes travel
+> as a git bundle over SSH. See "Deploying changes" in the root README.
 
 ### Architecture
 ```
@@ -219,7 +224,7 @@ Two optional services, one per Jetson. Neither is required to fly.
 ### Drone: `camera_daemon` (MJPEG streamer, port 8090)
 
 ```bash
-cd ~/Documents/mtsuissl-airborne
+cd ~/Documents/ASQI-DRONE/airborne
 python3 -m camera_daemon          # auto-detects the webcam; --help for flags
 ```
 
@@ -250,7 +255,7 @@ and are never re-encoded.
 ### Ground: `detector/` (TensorRT boxes, port 8091)
 
 ```bash
-cd ~/Documents/mtsuissl-ground
+cd ~/Documents/ASQI-DRONE/ground
 sudo ./detector/run-container.sh
 ```
 
@@ -349,7 +354,7 @@ gradually.
 
 # Files
 ```
-mtsuissl-airborne/                drone-side (stdlib + pymavlink; OpenCV only for the camera)
+airborne/                         drone-side (stdlib + pymavlink; OpenCV only for the camera)
   airborne_daemon/                control daemon — the safety boundary
     settings.py       env-driven config, validated at startup
     modes.py          ArduCopter mode numbers
@@ -372,9 +377,10 @@ mtsuissl-airborne/                drone-side (stdlib + pymavlink; OpenCV only fo
     90-drone-hotspot              NM dispatcher: restores regdomain + TX power
   tests/              pytest: rc, protocol, failsafe, camera, controller (81 tests)
 
-mtsuissl-ground/                  ground-side FastAPI bridge
+ground/                           ground-side FastAPI bridge
   app/
-    main.py           FastAPI app: static GUI, /ws, /healthz, lifespan
+    main.py           FastAPI app: static GUI, /ws, /healthz, fleet API, lifespan
+    fleet.py          fleet file loading, reachability, health summaries
     settings.py       env-driven config (pydantic-settings)
     protocol.py       pydantic validation of browser messages
     udp_link.py       asyncio UDP link to the drone
@@ -389,7 +395,7 @@ mtsuissl-ground/                  ground-side FastAPI bridge
     server.py         /detections + /healthz
     service.py        orchestration, signals, graceful shutdown
     run-container.sh  launches it in the dusty-nv container
-  gui/                React + Vite cockpit (see gui/README.md)
+  gui/                React + Vite fleet screen and cockpit (see gui/README.md)
   tests/              pytest: protocol, app integration, detector (30 tests)
 
 PROTOCOL.md                       wire contract (proto v1)

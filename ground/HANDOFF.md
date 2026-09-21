@@ -1,7 +1,9 @@
 # Project handoff
 
 Status document for someone picking this project up cold. Written 2026-08-05,
-updated 2026-08-06 after the first two flights.
+updated 2026-08-06 after the first two flights, and 2026-09-21 for the fleet
+(Piper, Omega, Vulkan), the consolidated repository and the fleet screen. The
+project overview and screenshots are in the root `README.md`.
 
 Everything below was verified against the running hardware on 2026-08-04/05, not
 copied from older documentation. Where this contradicts a README, trust this file
@@ -119,9 +121,15 @@ outstanding. `tools/linkcheck.sh` exists for it.
 
 ## 4. Access
 
-SSH as user `john` on both Jetsons. Both have `gh` 2.4.0 already authenticated as
-`mtsuissl`, with a credential helper in `~/.gitconfig`, so **plain `git pull`
-works on both machines with no setup**.
+SSH as user `john` on every Jetson. The operator laptop's `~/.ssh/config` has
+aliases: `ground` (campus ethernet), `ground-air` (hotspot), `drone` (Piper,
+through `ground` as a jump host) and `omega`.
+
+**`git pull` from GitHub does not work on the Jetsons.** The drones have no
+internet in flight configuration, and the consolidated repository
+(`tanzimulalam/ASQI-DRONE`) is private. Changes travel as git bundles over SSH;
+the steps are under "Deploying changes" in the root README. (Before 2026-09 the
+machines pulled the old public repositories with `gh`; that no longer applies.)
 
 Credentials are deliberately not in this file. The lab SSH password rotates
 weekly; a persistent key was installed to avoid depending on it.
@@ -135,16 +143,28 @@ Neither file is in git, by design.
 
 ## 5. Repositories
 
-| Repo | Runs on | Contents |
+One repository, `tanzimulalam/ASQI-DRONE` (private), with two halves:
+
+| Path | Runs on | Contents |
 |---|---|---|
-| `mtsuissl/mtsuissl-ground` | ground Jetson | FastAPI bridge, TensorRT detector, React cockpit |
-| `mtsuissl/mtsuissl-airborne` | drone Jetson | control daemon, camera daemon, MAVLink tools |
+| `ground/` | ground Jetson | FastAPI bridge, TensorRT detector, React fleet screen and cockpit |
+| `airborne/` | each drone Jetson | control daemon, camera daemon, MAVLink tools |
 
-Clone paths are `~/Documents/mtsuissl-ground` and `~/Documents/mtsuissl-airborne`
-respectively, one per machine.
+It consolidates the earlier `mtsuissl/mtsuissl-ground` and
+`mtsuissl/mtsuissl-airborne` repositories with both histories preserved.
 
-`PROTOCOL.md` in the airborne repo is the wire contract between them. Read it
-before changing anything that crosses the link.
+What each machine runs, as last checked:
+
+| Machine | Runs from | How |
+|---|---|---|
+| Ground Jetson | `~/Documents/ASQI-DRONE/ground` | drop-in `ground-bridge.service.d/asqi.conf` |
+| Omega | `~/Documents/ASQI-DRONE/airborne` with the venv `~/venv-airborne` | drop-in, installed at bring-up |
+| Piper | not re-checked since the consolidation; last known `~/Documents/mtsuissl-airborne` | original unit |
+
+Check with `systemctl show -p WorkingDirectory <unit>` before updating a machine.
+
+`airborne/PROTOCOL.md` is the wire contract between the halves. Read it before
+changing anything that crosses the link.
 
 > **`mtsuissl-ground` had zero commits until 2026-08-04.** The entire ground
 > codebase existed only on one SD card. This is worth knowing because it means
