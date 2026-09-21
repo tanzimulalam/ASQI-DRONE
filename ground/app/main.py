@@ -140,7 +140,12 @@ def create_app() -> FastAPI:
         Health comes from the cache, refreshed only by an explicit check.
         """
         drones = app.state.fleet
-        reach = await asyncio.gather(*(fleet_mod.jetson_reachable(d.ip) for d in drones))
+
+        async def reachable(d: fleet_mod.Drone) -> bool:
+            # An aircraft in build has no Jetson and no address to connect to.
+            return await fleet_mod.jetson_reachable(d.ip) if d.ready else False
+
+        reach = await asyncio.gather(*(reachable(d) for d in drones))
         return JSONResponse(
             {"drones": [_drone_status(app, d, r) for d, r in zip(drones, reach)]}
         )
@@ -151,6 +156,11 @@ def create_app() -> FastAPI:
         drone = fleet_mod.find(app.state.fleet, name)
         if drone is None:
             return JSONResponse({"error": f"no aircraft named {name!r}"}, status_code=404)
+        if not drone.ready:
+            return JSONResponse(
+                {"error": f"{drone.name} is still in build; nothing to check"},
+                status_code=409,
+            )
 
         session: Session = app.state.session
         if session.active and session.remote_ip == drone.ip:
@@ -219,6 +229,12 @@ async def _handle_ws(app: FastAPI, websocket: WebSocket) -> None:
         done, pending = await asyncio.wait({reader, writer}, return_when=asyncio.FIRST_COMPLETED)
         for task in pending:
             task.cancel()
+        # cancel() only requests cancellation. The hub removes this client in its
+        # own finally, so wait for that to actually run before the finally below
+        # counts who is left. Without this the count still included us, the
+        # session was never cleared, and an aircraft stayed "in session" after
+        # its last browser had gone.
+        await asyncio.gather(*pending, return_exceptions=True)
         for task in done:
             exc = task.exception()
             if exc and not isinstance(exc, WebSocketDisconnect):
@@ -256,6 +272,11 @@ async def _authenticate(
             if target is None:
                 await websocket.send_text(
                     json.dumps({"t": "auth_fail", "reason": f"no aircraft named {auth.drone!r}"})
+                )
+                continue
+            if not target.ready:
+                await websocket.send_text(
+                    json.dumps({"t": "auth_fail", "reason": f"{target.name} is still in build"})
                 )
                 continue
             ok = await udp.probe(target.ip, auth.password, settings.auth_probe_timeout_s)
@@ -306,10 +327,11 @@ def _drone_status(app: FastAPI, drone: fleet_mod.Drone, reachable: bool) -> dict
 
     return {
         "name": drone.name,
-        "ip": drone.ip,
+        "ip": drone.ip or None,
+        "ready": drone.ready,
         "reachable": reachable,
         "active": active,
-        "can_check_health": drone.token is not None,
+        "can_check_health": drone.ready and drone.token is not None,
         "health": health,
         "health_age_s": None if age_s is None else round(age_s, 1),
     }

@@ -34,6 +34,7 @@ export default function App() {
     airborneIp,
     airborneName,
     login,
+    logout,
     txOk,
   } = useDroneLink();
   const [takeoffOpen, setTakeoffOpen] = useState(false);
@@ -81,6 +82,7 @@ export default function App() {
         conn={conn}
         airborneIp={airborneIp}
         airborneName={airborneName}
+        onFleet={logout}
       />
       <ControlBanner tlm={tlm} txOk={txOk} />
       <FailsafeBanner active={!!tlm?.failsafe} onResume={resume} />

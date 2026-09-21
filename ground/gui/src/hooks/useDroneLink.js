@@ -80,6 +80,9 @@ export function useDroneLink() {
   // reconnect after a network blip goes back to the SAME aircraft, rather than
   // letting the bridge probe every candidate and connect to whichever answers.
   const droneRef = useRef(null);
+  // Set while deliberately leaving a session for the fleet screen, so the socket
+  // close that follows reconnects quietly instead of reporting BRIDGE LOST.
+  const leavingRef = useRef(false);
   const seqRef = useRef(0);
   const lastTlmRef = useRef(0);
   // When a control packet last actually left this browser. Drives txOk, which is
@@ -140,6 +143,35 @@ export function useDroneLink() {
     [sendRaw]
   );
 
+  /**
+   * Leave this aircraft and return to the fleet screen.
+   *
+   * Hiding the cockpit is not enough: the 50 Hz sender and the bridge's session
+   * would carry on commanding an aircraft the operator can no longer see. So this
+   * clears the credentials, which stops the sender on its next tick, and closes
+   * the socket, which is what makes the bridge drop its drone session once no
+   * browser is connected. The socket then reconnects unauthenticated.
+   *
+   * The cockpit only offers this while disarmed; see TelemetryBar.
+   */
+  const logout = useCallback(() => {
+    passwordRef.current = null;
+    droneRef.current = null;
+    leavingRef.current = true;
+    setAuthedBoth(false);
+    setAuthBusy(false);
+    setAuthError(null);
+    setAirborneIp(null);
+    setAirborneName(null);
+    setTlm(null);
+    setDet(null);
+    try {
+      wsRef.current?.close();
+    } catch {
+      /* already closing */
+    }
+  }, []);
+
   useEffect(() => {
     let backoff = 500;
     let reconnectTimer = 0;
@@ -166,6 +198,14 @@ export function useDroneLink() {
         setAuthedBoth(false);
         setAuthBusy(false);
         if (disposed) return;
+        if (leavingRef.current) {
+          // Deliberate return to the fleet screen: reconnect at once, quietly.
+          leavingRef.current = false;
+          backoff = 500;
+          setConn({ label: "CONNECTING", cls: "x" });
+          reconnectTimer = setTimeout(connect, 0);
+          return;
+        }
         setConn({ label: "BRIDGE LOST", cls: "r" });
         reconnectTimer = setTimeout(connect, backoff);
         backoff = Math.min(backoff * 2, 5000);
@@ -304,6 +344,7 @@ export function useDroneLink() {
     airborneIp,
     airborneName,
     login,
+    logout,
     txOk,
   };
 }

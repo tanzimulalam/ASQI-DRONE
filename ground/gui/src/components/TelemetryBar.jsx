@@ -48,7 +48,7 @@ function ageParts(ms, warn = 200) {
  * The telemetry chip row. `tlm` is the latest telemetry object or null.
  * `conn` is the coarse link state used before/without telemetry.
  */
-export default function TelemetryBar({ tlm, conn, airborneIp, airborneName }) {
+export default function TelemetryBar({ tlm, conn, airborneIp, airborneName, onFleet }) {
   const armed = !!tlm?.armed;
   // Arm chip: telemetry (armed/disarmed) wins; otherwise show link state.
   let armCls, armLabel;
@@ -69,6 +69,23 @@ export default function TelemetryBar({ tlm, conn, airborneIp, airborneName }) {
 
   return (
     <div id="topbar">
+      {/* Back to the fleet. Disabled while armed: leaving ends the control
+          session, and an armed aircraft is exactly when that must not happen by
+          accident. Uses the last known arm state, so a link that drops while
+          armed keeps the button locked rather than freeing it. */}
+      {onFleet && (
+        <button
+          type="button"
+          className="fleetback"
+          onClick={onFleet}
+          disabled={armed}
+          title={armed ? "Disarm before returning to the fleet" : "Return to the fleet screen"}
+        >
+          <span className="fleetback-arrow" aria-hidden="true">‹</span>
+          <span className="fleetback-label">{armed ? "Armed" : "Fleet"}</span>
+        </button>
+      )}
+
       <div className={`chip${armed ? " armed" : ""}`} id="armchip">
         <span className="v">
           <Dot cls={armCls} />
