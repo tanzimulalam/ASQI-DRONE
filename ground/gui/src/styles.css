@@ -1721,24 +1721,6 @@ button.cmd {
 .fleet-stat.stat-r .fleet-statn { color: var(--bad); }
 .fleet-stat.stat-build .fleet-statn { color: #b49af0; }
 
-/* ---- name + suffix ------------------------------------------------------- */
-
-.fleet-namewrap {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5em;
-  min-width: 0;
-}
-
-.fleet-suffix {
-  font-family: var(--num);
-  font-size: var(--fs-label);
-  font-weight: 700;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--accent);
-}
-
 /* ---- in build ------------------------------------------------------------
    Dashed rule and badge: reads as "not real yet" at a glance, and is distinct
    from offline, which means the aircraft exists and is powered down. */

@@ -258,10 +258,7 @@ function DroneCard({
   return (
     <article className={`fleet-card s-${st.cls}`}>
       <div className="fleet-cardhead">
-        <div className="fleet-namewrap">
-          <span className="fleet-name">{d.name}</span>
-          <span className="fleet-suffix">Aircraft</span>
-        </div>
+        <span className="fleet-name">{d.name}</span>
         {/* Prefixed modifier: the bare g/y/x classes are global dot fills and
             would paint the whole badge solid, hiding its text. */}
         <div className={`fleet-badge st-${st.cls}`}>
