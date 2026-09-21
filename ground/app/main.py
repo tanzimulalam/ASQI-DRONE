@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -13,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import TypeAdapter, ValidationError
 
 from . import PROTOCOL_VERSION, __version__
+from . import fleet as fleet_mod
 from .camera import add_camera_routes
 from .detections import detection_relay
 from .hub import Hub
@@ -47,6 +49,9 @@ async def lifespan(app: FastAPI):
     app.state.hub = hub
     app.state.udp = udp
     app.state.session = session
+    app.state.fleet = fleet_mod.load_fleet(settings.fleet_file, settings.candidate_ips)
+    # Last health summary per drone, keyed by fleet key: (monotonic time, summary).
+    app.state.health = {}
 
     detections = (
         asyncio.create_task(detection_relay(app, settings), name="detections")
@@ -126,6 +131,51 @@ def create_app() -> FastAPI:
     async def readyz() -> JSONResponse:
         return JSONResponse({"ready": True})
 
+    @app.get("/api/fleet")
+    async def fleet_status() -> JSONResponse:
+        """Every aircraft's reachability plus its last known health.
+
+        Cheap enough to poll every few seconds: reachability is a TCP connect to
+        each drone Jetson, which never touches the aircraft's UDP control port.
+        Health comes from the cache, refreshed only by an explicit check.
+        """
+        drones = app.state.fleet
+        reach = await asyncio.gather(*(fleet_mod.jetson_reachable(d.ip) for d in drones))
+        return JSONResponse(
+            {"drones": [_drone_status(app, d, r) for d, r in zip(drones, reach)]}
+        )
+
+    @app.post("/api/fleet/{name}/health")
+    async def fleet_check_health(name: str) -> JSONResponse:
+        """Probe one aircraft's daemon for a fresh health reading."""
+        drone = fleet_mod.find(app.state.fleet, name)
+        if drone is None:
+            return JSONResponse({"error": f"no aircraft named {name!r}"}, status_code=404)
+
+        session: Session = app.state.session
+        if session.active and session.remote_ip == drone.ip:
+            # Already being flown: report the live stream rather than probing it.
+            return JSONResponse(_drone_status(app, drone, True))
+
+        if drone.token is None:
+            return JSONResponse(
+                {"error": f"{drone.name} has no token in the fleet file; health unavailable"},
+                status_code=409,
+            )
+
+        settings: Settings = app.state.settings
+        reachable = await fleet_mod.jetson_reachable(drone.ip)
+        if reachable:
+            tlm = await app.state.udp.probe_telemetry(
+                drone.ip, drone.token, settings.health_probe_timeout_s
+            )
+            # A reachable Jetson with a silent daemon is its own diagnosis, so a
+            # failed probe is recorded as "no health" rather than left stale.
+            app.state.health[drone.key] = (time.monotonic(), fleet_mod.summarise(tlm))
+        else:
+            app.state.health.pop(drone.key, None)
+        return JSONResponse(_drone_status(app, drone, reachable))
+
     @app.websocket("/ws")
     async def ws(websocket: WebSocket) -> None:
         await _handle_ws(app, websocket)
@@ -198,17 +248,39 @@ async def _authenticate(
             await websocket.send_text(json.dumps({"t": "auth_required"}))
             continue
 
-        ip = await _probe_candidates(udp, settings, auth.password)
+        # Named login: probe only that aircraft, so "Fly Omega" can never quietly
+        # connect to Piper because Piper happened to accept the same password.
+        name = None
+        if auth.drone is not None:
+            target = fleet_mod.find(websocket.app.state.fleet, auth.drone)
+            if target is None:
+                await websocket.send_text(
+                    json.dumps({"t": "auth_fail", "reason": f"no aircraft named {auth.drone!r}"})
+                )
+                continue
+            ok = await udp.probe(target.ip, auth.password, settings.auth_probe_timeout_s)
+            ip, name = (target.ip, target.name) if ok else (None, None)
+        else:
+            ip = await _probe_candidates(udp, settings, auth.password)
+            if ip is not None:
+                match = next((d for d in websocket.app.state.fleet if d.ip == ip), None)
+                name = match.name if match else None
+
         if ip is not None:
             session.set(auth.password, (ip, settings.airborne_port))
-            await websocket.send_text(json.dumps({"t": "auth_ok", "airborne": ip}))
-            log.info("client authenticated to drone %s", ip)
+            await websocket.send_text(
+                json.dumps({"t": "auth_ok", "airborne": ip, "drone": name})
+            )
+            log.info("client authenticated to drone %s (%s)", ip, name or "unnamed")
             return auth.password
 
-        await websocket.send_text(
-            json.dumps({"t": "auth_fail", "reason": "no drone accepted that password"})
+        reason = (
+            f"{auth.drone} did not accept that password"
+            if auth.drone is not None
+            else "no drone accepted that password"
         )
-        log.info("login rejected (password matched no candidate drone)")
+        await websocket.send_text(json.dumps({"t": "auth_fail", "reason": reason}))
+        log.info("login rejected (%s)", reason)
 
 
 async def _probe_candidates(udp: UdpLink, settings: Settings, password: str) -> str | None:
@@ -216,6 +288,31 @@ async def _probe_candidates(udp: UdpLink, settings: Settings, password: str) -> 
         if await udp.probe(ip, password, settings.auth_probe_timeout_s):
             return ip
     return None
+
+
+def _drone_status(app: FastAPI, drone: fleet_mod.Drone, reachable: bool) -> dict[str, Any]:
+    """One fleet card's worth of state. Never includes the token."""
+    session: Session = app.state.session
+    udp: UdpLink = app.state.udp
+    active = session.active and session.remote_ip == drone.ip
+
+    if active:
+        # The aircraft being flown: its live telemetry is already here. Probing it
+        # would steal the cockpit's telemetry stream, so we never do.
+        health, age_s = fleet_mod.summarise(udp.latest_telemetry), 0.0
+    else:
+        cached = app.state.health.get(drone.key)
+        health, age_s = (cached[1], time.monotonic() - cached[0]) if cached else (None, None)
+
+    return {
+        "name": drone.name,
+        "ip": drone.ip,
+        "reachable": reachable,
+        "active": active,
+        "can_check_health": drone.token is not None,
+        "health": health,
+        "health_age_s": None if age_s is None else round(age_s, 1),
+    }
 
 
 async def _read_loop(

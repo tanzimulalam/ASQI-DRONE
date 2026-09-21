@@ -11,7 +11,7 @@ import CommandDeck from "./components/CommandDeck.jsx";
 import ControlMode from "./components/ControlMode.jsx";
 import { VisionPanel, StatusPanel } from "./components/SidePanels.jsx";
 import TakeoffModal from "./components/TakeoffModal.jsx";
-import LoginOverlay from "./components/LoginOverlay.jsx";
+import FleetScreen from "./components/FleetScreen.jsx";
 
 const NO_KEYS = new Set();
 
@@ -22,8 +22,20 @@ const NO_KEYS = new Set();
  * which is what a 4:3 feed on a landscape panel wants.
  */
 export default function App() {
-  const { axesRef, tlm, det, conn, sendCmd, authed, authBusy, authError, airborneIp, login, txOk } =
-    useDroneLink();
+  const {
+    axesRef,
+    tlm,
+    det,
+    conn,
+    sendCmd,
+    authed,
+    authBusy,
+    authError,
+    airborneIp,
+    airborneName,
+    login,
+    txOk,
+  } = useDroneLink();
   const [takeoffOpen, setTakeoffOpen] = useState(false);
   // "touch" (on-screen gimbals) or "keyboard" (WASD + numpad). Exactly one owns
   // the axes at a time; see ControlMode.
@@ -37,14 +49,15 @@ export default function App() {
   useKeyboardControl(axesRef, keyboardActive, onKeysChange);
 
   // Gate the whole cockpit behind login: no sticks, no telemetry, no video until
-  // the password authenticates to a drone.
+  // the operator picks an aircraft on the fleet screen and its password
+  // authenticates to it.
   if (!authed) {
     return (
-      <LoginOverlay
+      <FleetScreen
         wsReady={conn.cls !== "x" && conn.label !== "BRIDGE LOST"}
         busy={authBusy}
         error={authError}
-        onSubmit={login}
+        onLogin={login}
       />
     );
   }
@@ -63,7 +76,12 @@ export default function App() {
 
   return (
     <div id="app">
-      <TelemetryBar tlm={tlm} conn={conn} airborneIp={airborneIp} />
+      <TelemetryBar
+        tlm={tlm}
+        conn={conn}
+        airborneIp={airborneIp}
+        airborneName={airborneName}
+      />
       <ControlBanner tlm={tlm} txOk={txOk} />
       <FailsafeBanner active={!!tlm?.failsafe} onResume={resume} />
       <TakeoverBanner active={!tlm?.failsafe && !!tlm?.pilot_takeover} onResume={resume} />

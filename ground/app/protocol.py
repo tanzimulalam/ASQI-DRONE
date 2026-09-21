@@ -59,6 +59,10 @@ class AuthIn(_Strict):
 
     t: Literal["auth"]
     password: str = Field(min_length=1, max_length=256)
+    # Which aircraft to log into, by fleet name. Absent, every candidate is probed
+    # and whichever accepts the password connects, which is how single-drone
+    # setups have always worked and still do.
+    drone: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 ClientMessage = Annotated[

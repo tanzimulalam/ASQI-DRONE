@@ -48,7 +48,7 @@ function ageParts(ms, warn = 200) {
  * The telemetry chip row. `tlm` is the latest telemetry object or null.
  * `conn` is the coarse link state used before/without telemetry.
  */
-export default function TelemetryBar({ tlm, conn, airborneIp }) {
+export default function TelemetryBar({ tlm, conn, airborneIp, airborneName }) {
   const armed = !!tlm?.armed;
   // Arm chip: telemetry (armed/disarmed) wins; otherwise show link state.
   let armCls, armLabel;
@@ -59,6 +59,10 @@ export default function TelemetryBar({ tlm, conn, airborneIp }) {
     armCls = conn.cls;
     armLabel = conn.label;
   }
+
+  // Under a volt is no flight battery at all (bench, Jetson on wall power), not a
+  // flat pack. Matches the fleet screen, so both views tell the same story.
+  const noBatt = tlm?.batt_v != null && tlm.batt_v < 1.0;
 
   const ctrl = ageParts(tlm?.ctrl_age_ms);
   const hb = ageParts(tlm?.hb_age_ms, 1500);
@@ -72,10 +76,19 @@ export default function TelemetryBar({ tlm, conn, airborneIp }) {
         </span>
       </div>
 
+      {/* Which aircraft this cockpit commands. Never dropped on narrow screens:
+          with more than one airframe, not knowing which one you are flying is the
+          failure worth designing against. */}
+      {airborneName && <Chip k="Aircraft" w={9}>{airborneName}</Chip>}
+
       <Chip k="Mode" w={9}>{tlm?.mode || "--"}</Chip>
       <Chip k="GPS" w={13}>{tlm ? `${tlm.sats} sat · fix ${tlm.gps_fix}` : "--"}</Chip>
-      <Chip k="Batt" w={11} fill={tlm && tlm.batt_pct >= 0 ? tlm.batt_pct : null}>
-        {tlm ? `${tlm.batt_v} V${tlm.batt_pct >= 0 ? "  " + tlm.batt_pct + "%" : ""}` : "--"}
+      <Chip k="Batt" w={11} fill={noBatt ? null : tlm && tlm.batt_pct >= 0 ? tlm.batt_pct : null}>
+        {!tlm
+          ? "--"
+          : noBatt
+            ? "none"
+            : `${tlm.batt_v} V${tlm.batt_pct >= 0 ? "  " + tlm.batt_pct + "%" : ""}`}
       </Chip>
       <Chip k="Cur" w={7} drop={1}>{tlm ? `${tlm.current_a} A` : "--"}</Chip>
       <Chip k="Alt" w={8}>{tlm ? `${tlm.alt} m` : "--"}</Chip>
