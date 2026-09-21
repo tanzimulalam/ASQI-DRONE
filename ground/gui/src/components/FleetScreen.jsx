@@ -161,7 +161,7 @@ export default function FleetScreen({ wsReady, busy, error, onLogin }) {
           <div className="fleet-summary" aria-label="Fleet summary">
             <Stat n={counts.total} label={counts.total === 1 ? "aircraft" : "aircraft"} />
             <Stat n={counts.online} label="online" cls="g" />
-            <Stat n={counts.offline} label="offline" cls="x" />
+            <Stat n={counts.offline} label="offline" cls="r" />
             {counts.build > 0 && <Stat n={counts.build} label="in build" cls="build" />}
           </div>
         )}
@@ -226,7 +226,7 @@ function cardState(d) {
   // Testing !d.ready showed every aircraft as in build against such a bridge.
   if (d.ready === false) return { key: "build", label: "IN BUILD", cls: "build" };
   if (d.active) return { key: "flying", label: "IN SESSION", cls: "b" };
-  if (!d.reachable) return { key: "offline", label: "OFFLINE", cls: "x" };
+  if (!d.reachable) return { key: "offline", label: "OFFLINE", cls: "r" };
   if (!d.can_check_health) return { key: "nohealth", label: "ONLINE", cls: "g" };
   if (d.health) return { key: "healthy", label: "ONLINE", cls: "g" };
   if (d.health_age_s != null) return { key: "silent", label: "DAEMON SILENT", cls: "y" };

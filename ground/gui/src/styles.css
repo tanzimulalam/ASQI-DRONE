@@ -1467,9 +1467,9 @@ button.cmd {
 }
 .fleet-card.s-g::before { background: linear-gradient(90deg, var(--ok), transparent); }
 .fleet-card.s-y::before { background: linear-gradient(90deg, var(--warn), transparent); }
-.fleet-card.s-x::before { background: linear-gradient(90deg, var(--faint), transparent); }
+.fleet-card.s-r::before { background: linear-gradient(90deg, var(--bad), transparent); }
 .fleet-card.s-b::before { background: linear-gradient(90deg, var(--mt-blue), var(--accent), transparent); }
-.fleet-card.s-x { opacity: 0.78; }
+.fleet-card.s-r { border-color: rgba(244, 56, 74, 0.35); }
 
 .fleet-cardhead {
   display: flex;
@@ -1503,6 +1503,7 @@ button.cmd {
 .fleet-badge.st-g { color: var(--ok); border-color: rgba(36, 209, 126, 0.35); }
 .fleet-badge.st-y { color: var(--warn); border-color: rgba(245, 165, 36, 0.4); }
 .fleet-badge.st-x { color: var(--muted); border-color: var(--line); }
+.fleet-badge.st-r { color: var(--bad); border-color: rgba(244, 56, 74, 0.5); background: rgba(244, 56, 74, 0.08); }
 .fleet-badge.st-b { color: var(--accent); border-color: rgba(63, 162, 232, 0.5); }
 
 .fleet-ip {
@@ -1717,7 +1718,7 @@ button.cmd {
 }
 
 .fleet-stat.stat-g .fleet-statn { color: var(--ok); }
-.fleet-stat.stat-x .fleet-statn { color: var(--faint); }
+.fleet-stat.stat-r .fleet-statn { color: var(--bad); }
 .fleet-stat.stat-build .fleet-statn { color: #b49af0; }
 
 /* ---- name + suffix ------------------------------------------------------- */
