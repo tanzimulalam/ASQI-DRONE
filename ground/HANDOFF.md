@@ -726,3 +726,42 @@ Order that worked:
 
 Radio calibration has to come before the parameter writes, because it rewrites
 the `RC*` values.
+
+### The fleet screen and `/etc/drone/fleet.json`
+
+Since 2026-09-21 the GUI opens on a fleet screen: one card per aircraft showing
+whether it is reachable and its battery, GPS, mode, arm state, EKF, failsafe and
+latest pre-arm message. Flying one asks for that aircraft's password.
+
+What the ground station can see is decided by `/etc/drone/fleet.json` on the
+ground Jetson:
+
+```json
+{"drones": [
+  {"name": "Piper", "ip": "10.42.0.1",    "token": "..."},
+  {"name": "Omega", "ip": "10.130.143.5", "token": "..."}
+]}
+```
+
+It holds tokens, so it is mode 0640 owned by `root:john`. The tokens are used only
+for read-only health probes; they never reach a browser and they do not grant
+control. **To add a third aircraft, add an entry here and restart
+`ground-bridge`.** Without the file the bridge falls back to
+`GROUND_AIRBORNE_IPS` and health is unavailable.
+
+Two properties the code relies on, both covered by `tests/test_fleet.py`:
+
+- The aircraft being flown is **never** health-probed. The daemon sends telemetry
+  to whoever last contacted it, so a probe would steal the cockpit's stream
+  mid-flight. Its card shows live session telemetry instead. A probe cannot mask a
+  link loss either: heartbeats only call `note_ground`, never the control-age clock.
+- Reachability is a TCP connect to the drone Jetson's port 22, so it polls every
+  few seconds without touching the aircraft's UDP control port.
+
+The ground bridge now runs from `~/Documents/ASQI-DRONE/ground` via the drop-in
+`/etc/systemd/system/ground-bridge.service.d/asqi.conf`. Removing that file and
+restarting returns it to the old `mtsuissl-ground` checkout.
+
+A desktop shortcut on the operator laptop, **ASQI Ground Station**, opens the GUI
+at whichever address answers: campus ethernet on the bench, the hotspot in the
+field. Its script lives at `%LOCALAPPDATA%\ASQI\Open-GroundStation.ps1`.
