@@ -1682,45 +1682,6 @@ button.cmd {
 
 .fleet-hero .login-title { width: min(100%, 760px); }
 
-/* ---- summary strip ------------------------------------------------------- */
-
-.fleet-summary {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: clamp(8px, 0.9vw, 16px);
-}
-
-.fleet-stat {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.5em;
-  padding: 0.42em 1em;
-  border: 1px solid var(--line-soft);
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.32);
-}
-
-.fleet-statn {
-  font-family: var(--num);
-  font-size: var(--fs-value);
-  font-weight: 800;
-  color: var(--txt);
-}
-
-.fleet-statl {
-  font-family: var(--num);
-  font-size: var(--fs-label);
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.fleet-stat.stat-g .fleet-statn { color: var(--ok); }
-.fleet-stat.stat-r .fleet-statn { color: var(--bad); }
-.fleet-stat.stat-build .fleet-statn { color: #b49af0; }
-
 /* ---- in build ------------------------------------------------------------
    Dashed rule and badge: reads as "not real yet" at a glance, and is distinct
    from offline, which means the aircraft exists and is powered down. */
@@ -1861,7 +1822,7 @@ button.cmd {
    drone IP is shown at login, and link phase is duplicated by the FC LINK and
    UPLINK rows in the Status panel. */
 
-@media (max-width: 1600px) {
+@media (max-width: 2000px) {
   .drop-1 { display: none; }
 }
 
@@ -1869,7 +1830,8 @@ button.cmd {
   .drop-2 { display: none; }
 }
 
-@media (max-width: 1150px) {
+/* The Fleet button took the room the lab subtitle used to have. */
+@media (max-width: 2100px) {
   .brand-sub { display: none; }
 }
 

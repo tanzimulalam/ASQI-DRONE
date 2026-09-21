@@ -68,9 +68,8 @@ class UdpLink:
         Returns True only if the drone at ``ip`` accepted this specific token.
 
         The probe deliberately runs on its own short-lived socket rather than the
-        session socket. The daemon records a return address for every packet whose
-        token it accepts, and then streams telemetry to every address it has
-        recorded — for as long as it keeps running. So on the long-lived session
+        session socket. The daemon records the return address of the latest packet
+        whose token it accepts and streams telemetry there. So on the long-lived session
         socket "telemetry arrived" stops meaning "the token was accepted" the
         moment any correct login has happened in this process's lifetime: the
         drone is already streaming to that port, and every later probe sees a

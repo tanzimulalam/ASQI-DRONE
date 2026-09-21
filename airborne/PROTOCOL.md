@@ -12,25 +12,30 @@ ground bridge injects that token into every uplink packet before forwarding.
 
 ## Login (browser ↔ bridge only, never forwarded)
 
-The bridge holds no drone connection until a browser authenticates. On load the
-GUI shows a password box; the password **is** the drone token.
+The bridge holds no drone connection until a browser authenticates. The GUI
+opens on the fleet screen; pressing Fly on an aircraft asks for its password,
+and the password **is** that aircraft's token.
 
 ```json
-browser → bridge:  { "t":"auth", "password":"..." }
-bridge  → browser: { "t":"auth_ok", "airborne":"10.42.0.1" }
-bridge  → browser: { "t":"auth_fail", "reason":"no drone accepted that password" }
+browser → bridge:  { "t":"auth", "password":"...", "drone":"Omega" }
+bridge  → browser: { "t":"auth_ok", "airborne":"10.130.143.5", "drone":"Omega" }
+bridge  → browser: { "t":"auth_fail", "reason":"Omega did not accept that password" }
 ```
 
-On `auth`, the bridge probes each candidate drone IP (`GROUND_AIRBORNE_IPS`,
-comma-separated; defaults to `GROUND_AIRBORNE_IP`) by sending a token-bearing
-heartbeat and waiting for telemetry. Because the airborne daemon only records a
+`drone` is optional. With it, the bridge probes only that aircraft from
+`/etc/drone/fleet.json`, so a login aimed at one aircraft can never land on
+another that happens to share a password; an unknown name or an aircraft marked
+`"ready": false` is refused without probing anything. Without it, the bridge
+probes each candidate IP (`GROUND_AIRBORNE_IPS`, comma-separated) in order, and
+`auth_ok` names the aircraft if its address is in the fleet file. Either way the
+probe is a token-bearing heartbeat followed by a wait for telemetry. Because the airborne daemon only records a
 return address — and thus only sends telemetry — for packets whose token it
 accepts, a reply proves the password is correct **and** identifies which drone it
 belongs to.
 
-> ⚠ **The probe must be sent from a freshly bound UDP port.** The daemon keeps
-> streaming telemetry to *every* address it has ever accepted a packet from, for
-> as long as it runs. Probing from a socket the daemon has already recorded means
+> ⚠ **The probe must be sent from a freshly bound UDP port.** The daemon streams
+> telemetry to the most recent address that sent it a valid packet. Probing from
+> a socket the daemon is already streaming to means
 > a reply arrives no matter what token was sent, so the check silently degrades
 > into "is this drone talking to us" and **any password is accepted**. That was a
 > real bug: the operator got a cockpit with live telemetry and video but zero
@@ -41,7 +46,24 @@ Wrong password → no drone replies → `auth_fail`. The password/token is
 never sent to the drone as anything other than the standard per-packet `token`,
 and the `/camera` proxy is gated the same way (no login → 502). Telemetry and
 control flow only after `auth_ok`; the session is dropped when the last client
-disconnects. The GUI silently re-authenticates across bridge reconnects.
+disconnects, which is also how the cockpit's Fleet button ends a session. The GUI
+silently re-authenticates, to the same aircraft, across bridge reconnects.
+
+## Fleet API (browser ↔ bridge only, HTTP)
+
+```
+GET  /api/fleet                 every aircraft: name, ip, ready, reachable,
+                                active, can_check_health, health, health_age_s
+POST /api/fleet/{name}/health   refresh one aircraft's health reading
+```
+
+Tokens never appear in either response. Reachability is a TCP connect to the
+drone Jetson's port 22, so polling it never touches UDP 14650. A health check
+sends one token-bearing heartbeat from a fresh port and keeps a whitelisted
+summary of the reply. The aircraft being flown is **never** probed, because the
+daemon streams telemetry to the most recent valid sender and a probe would take
+the cockpit's stream; its health comes from the live session instead. Responses:
+`404` unknown name, `409` in build or no token in the fleet file.
 
 ## Uplink: control (browser/bridge → airborne), ~50 Hz
 ```json
@@ -112,5 +134,4 @@ webcam --USB--> airborne camera_daemon --MJPEG/HTTP--> ground bridge /camera -->
 |------|-------|-------|---------|
 | 14650 | UDP | airborne Jetson | control/command/hb ingest |
 | 8090  | TCP | airborne Jetson | camera MJPEG stream (camera_daemon) |
-| 8080  | TCP | ground Jetson | browser WebSocket |
-| 8000  | TCP | ground Jetson | GUI static HTTP + `/camera` proxy |
+| 8000  | TCP | ground Jetson | GUI, WebSocket `/ws`, fleet API, `/camera` proxy |

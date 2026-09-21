@@ -1,12 +1,14 @@
-# mtsuissl-ground
+# Ground control station
 
-Ground control station for the ASQI Lab quadcopter. Serves a browser cockpit that
-flies a Holybro Pixhawk 6C over Wi-Fi, streams the aircraft's camera, and runs
-TensorRT object detection on the ground Jetson's GPU.
+The operator's guide to the ground half of [ASQI-DRONE](../README.md). The ground
+Jetson serves a browser fleet screen and cockpit that fly a Holybro Pixhawk 6C
+over Wi-Fi, streams the aircraft's camera, and runs TensorRT object detection on
+its own GPU.
 
-Companion repo: [`mtsuissl-airborne`](https://github.com/mtsuissl/mtsuissl-airborne),
-which runs on the drone. The wire contract between them is `PROTOCOL.md` in that
-repo. Read it before changing anything that crosses the link.
+The drone side is [`../airborne`](../airborne/README.md). The wire contract between
+the two is [`../airborne/PROTOCOL.md`](../airborne/PROTOCOL.md). Read it before
+changing anything that crosses the link. The project's status document is
+[`HANDOFF.md`](HANDOFF.md).
 
 ---
 
@@ -33,7 +35,7 @@ control path, and both can be dead while the aircraft still flies.
 
 | Port | Where | What |
 |------|-------|------|
-| 8000 | ground | GUI + WebSocket + `/camera` proxy |
+| 8000 | ground | GUI + WebSocket + fleet API + `/camera` proxy |
 | 8091 | ground | detector HTTP (`/detections`, `/healthz`) |
 | 8090 | drone | camera MJPEG stream |
 | 14650 | drone | control / command / heartbeat ingest (UDP) |
@@ -45,8 +47,11 @@ control path, and both can be dead while the aircraft still flies.
 | Ground | Jetson Orin Nano Super, JetPack 6.2 (R36.4.7) |
 | Drone | Jetson Orin Nano Super + Holybro Pixhawk 6C on `/dev/ttyACM0` |
 | Camera | Logitech Brio 101 (USB UVC) on the drone |
-| Radio | TP-Link Archer T2U PLUS (RTL8821AU) on the drone, running the AP |
-| Link | drone hosts SSID `drone-tx`, 2.4 GHz ch 11, drone is `10.42.0.1` |
+| Radio | TP-Link Archer T2U PLUS (RTL8821AU) on the drone, running the AP; a USB Wi-Fi adapter on the ground, which the drone hears 11 dB better than the onboard radio |
+| Link | Piper hosts SSID `drone-tx`, 2.4 GHz ch 11, and is `10.42.0.1` |
+
+This table is Piper's. Omega's differences are in
+[HANDOFF section 13](HANDOFF.md#13-the-fleet-piper-and-omega).
 
 ---
 
@@ -54,13 +59,36 @@ control path, and both can be dead while the aircraft still flies.
 
 Everything starts on boot. There is nothing to launch by hand.
 
-Open **`http://<ground-ip>:8000/`** and enter the drone password.
+Open **`http://<ground-ip>:8000/`**. On the operator laptop the **ASQI Ground
+Station** desktop shortcut tries the campus address, then the hotspot address,
+and opens whichever answers.
+
+### The fleet screen
+
+![Fleet screen](../docs/images/fleet-screen.png)
+
+One card per aircraft in `/etc/drone/fleet.json`:
+
+| Badge | Meaning |
+|---|---|
+| **ONLINE** (green) | The drone Jetson answers. Health is read from its daemon when it first comes online and whenever you press **Check health**. |
+| **OFFLINE** (red) | The drone Jetson does not answer. Powered off, or not on a network the ground station can reach. |
+| **IN SESSION** (blue) | This aircraft is being flown. Its card shows the live session telemetry instead of probing it. |
+| **DAEMON SILENT** (amber) | The Jetson is up but the flight daemon did not answer a health check. |
+| **IN BUILD** (violet, dashed) | Listed so the fleet is complete, but has no address yet and cannot be flown. |
+
+**Fly** asks for that aircraft's password and probes only that aircraft, so
+flying Omega can never quietly connect to Piper. The aircraft decides whether the
+password is right; the ground station holds no list of valid passwords.
+
+A battery reading under 1 V shows as **not connected**: the flight controller is
+on USB power with no pack plugged in.
 
 ### The cockpit
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ DISARMED  MODE  GPS  BATT  ALT  SPD  EKF  CTRL  FC HB  LINK │  <- telemetry band
+│ < FLEET  DISARMED  AIRCRAFT  MODE  GPS  BATT  ALT  ...  LINK│  <- telemetry band
 ├───────────┬─────────────────────────────────┬───────────────┤
 │  VISION   │                                 │    STATUS     │
 │  detector │          camera feed            │  link health  │
@@ -72,6 +100,12 @@ Open **`http://<ground-ip>:8000/`** and enter the drone password.
 │  yaw          STICKS | KEYBOARD                  roll       │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+![Cockpit](../docs/images/cockpit.png)
+
+**Fleet button.** Top left. Ends the session and returns to the fleet screen.
+Disabled, and labelled **Armed**, while the aircraft is armed, so it cannot be
+pressed by accident in flight.
 
 **Telemetry band.** Every chip reserves its worst-case width so the row never
 reflows, and the band cannot wrap. On narrow screens the least critical readings
@@ -151,15 +185,11 @@ arm gesture exactly the same way it blocks the GUI button.
 
 Only with props off, and put them back the moment you are done:
 
-```bash
-sudo systemctl stop drone-airborne
-python3 tools/params.py set ARMING_CHECK=0 FENCE_ENABLE=0    # bench only
-sudo systemctl start drone-airborne
-# ... test ...
-sudo systemctl stop drone-airborne
-python3 tools/params.py set ARMING_CHECK=1 FENCE_ENABLE=1    # RESTORE
-sudo systemctl start drone-airborne
-```
+On the drone Jetson, use `airborne/tools/benchmode.sh`. It stops the daemon
+(which owns the serial port), writes `ARMING_CHECK` and `FENCE_ENABLE`, reads
+them back from the vehicle, and restarts the daemon on every exit path, including
+failure. Its usage line is at the top of the script. **Turning bench mode off
+again is not optional**, and it is only done when the read-back says 1 for both.
 
 `FENCE_ENABLE=1` demands a position fix before arming, so an enabled geofence
 makes indoor arming impossible on its own. That is the fence working correctly,
@@ -176,7 +206,7 @@ the previous JavaScript bundle, so a new build appears to do nothing.
 On the ground Jetson, with someone carrying the drone away:
 
 ```bash
-cd ~/Documents/mtsuissl-ground && ./tools/linkcheck.sh
+cd ~/Documents/ASQI-DRONE/ground && ./tools/linkcheck.sh
 ```
 
 One line per second: RSSI, negotiated 802.11 rates, ping RTT, and bytes actually
@@ -231,22 +261,39 @@ time the hotspot comes up. Both are runtime-only state that otherwise reverts to
 
 | Variable | Default | Notes |
 |---|---|---|
-| `GROUND_AIRBORNE_IPS` | `10.42.0.1,10.131.70.137` | Candidates tried in order at login. Hotspot first, wired as bench fallback. |
+| `GROUND_FLEET_FILE` | `/etc/drone/fleet.json` | The fleet list. Without it the bridge falls back to `GROUND_AIRBORNE_IPS` and health checks are unavailable. |
+| `GROUND_AIRBORNE_IPS` | `10.42.0.1,10.131.70.137` | Fallback candidates, tried in order, when there is no fleet file. |
 | `DET_STREAM_URL` | `http://10.42.0.1:8090/stream.mjpg` | Where the detector pulls frames. |
 | `DET_NETWORK` | `ssd-mobilenet-v2` | detectNet model. Changing it triggers a multi-minute TensorRT rebuild. |
 | `DET_THRESHOLD` | `0.5` | Confidence cutoff. |
 | `DET_MIN_AVAIL_MB` | `1200` | Memory headroom to wait for before loading the engine. |
 
-The **drone password** is the shared session token. It lives in
-`/etc/drone/drone.env` on the drone (mode 0640, never committed) and the operator
-types it at the GUI. The bridge injects it server side, so the browser never
-holds it.
+Each **aircraft password** is that aircraft's session token. It lives in
+`/etc/drone/drone.env` on its drone Jetson (mode 0640, never committed) and the
+operator types it at the GUI. The bridge injects it server side, so the browser
+never holds it.
+
+### `/etc/drone/fleet.json`
+
+```json
+{"drones": [
+  {"name": "Piper",  "ip": "10.42.0.1",    "token": "..."},
+  {"name": "Omega",  "ip": "10.130.143.5", "token": "..."},
+  {"name": "Vulkan", "ready": false}
+]}
+```
+
+Mode 0640, `root:john`. Tokens here are used only for read-only health probes;
+`tests/test_fleet.py` checks they never reach a browser. An aircraft with
+`"ready": false` needs no address or token. Restart `ground-bridge` after editing.
+A broken file does not stop the bridge: it logs the problem and falls back to
+`GROUND_AIRBORNE_IPS`.
 
 ## Development
 
 ```bash
 pip3 install -r requirements-dev.txt
-python3 -m pytest                       # 47 pass, 3 known failures (see below)
+python3 -m pytest                       # all pass except 3 known stale tests (below)
 
 cd gui
 npm install
@@ -255,7 +302,13 @@ npm run build                           # writes gui/dist, which the bridge serv
 ```
 
 After changing anything in `gui/src`, **rebuild**. The bridge serves `gui/dist`,
-not the sources.
+not the sources. The Jetson's Node is too old for Vite 5, so build on another
+machine and copy `gui/dist` across.
+
+**Without a drone.** `tools/sim_drone.py` is a stand-in aircraft that answers the
+login and streams steady telemetry, enough to work on the fleet screen and
+cockpit anywhere. Instructions are in its docstring and in the
+[root README](../README.md#working-on-it).
 
 Three tests in `tests/test_app.py` fail. They predate the login gate and never
 send an `auth` message, so nothing is ever forwarded and they time out. They are
@@ -273,11 +326,13 @@ stale tests, not product bugs, and are tracked separately.
 | Range much worse than expected | Regulatory domain fell back to `country 00` (14 dBm instead of 20) | `iw reg get`. The dispatcher should prevent this; check `journalctl -t drone-hotspot`. |
 | GUI changes do not appear | Stale build, or a cached bundle in the browser | `cd gui && npm run build`, then hard reload (`Ctrl+Shift+R`) |
 | `PreArm: Need Position Estimate` indoors | Aircraft is in a mode that requires position | Switch to **ALT HOLD**. Not an arming-check issue; disabling checks will not help |
+| Every aircraft shows OFFLINE | The bridge cannot reach port 22 on the drone Jetsons, or `fleet.json` has the wrong addresses | The bridge logs what it loaded on start (`journalctl -u ground-bridge`, line starting `fleet:`). On the hotspot, check the USB Wi-Fi profile is up. |
+| Health check refused while nobody is flying | A bridge older than 2026-09-21 kept the session open after the browser left | Update and restart `ground-bridge`. |
 | Sticks do nothing, everything else works | `SYSID_MYGCS` does not match the daemon's `DRONE_SRC_SYS` | ArduPilot silently drops overrides from any other system id. Both must be 250 |
 
 ## Safety
 
-Read the staged bring-up in the airborne repo's README and **do not skip stages**.
+Read the staged bring-up in [`../airborne/README.md`](../airborne/README.md) and **do not skip stages**.
 Props stay off through Stage 3.
 
 Before any flight:
