@@ -1892,3 +1892,41 @@ button.cmd {
   opacity: 0.35;
   cursor: default;
 }
+
+/* ---- why the aircraft will not arm ---------------------------------------
+   Sits under the control banner, only while disarmed. The flight controller
+   reports these; before this they were visible only in the drone's log. */
+
+.prearm-banner {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.6em;
+  margin: 0 var(--gap) 0;
+  padding: 0.5em 0.85em;
+  border: 1px solid rgba(245, 165, 36, 0.45);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius-sm);
+  background: rgba(245, 165, 36, 0.08);
+}
+
+.prearm-tag {
+  font-family: var(--num);
+  font-size: var(--fs-label);
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  color: var(--warn);
+  white-space: nowrap;
+}
+
+.prearm-reason {
+  font-family: var(--num);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--txt);
+}
+
+.prearm-hint {
+  font-size: 0.86rem;
+  color: var(--muted);
+}
