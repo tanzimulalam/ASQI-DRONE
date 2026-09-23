@@ -52,6 +52,7 @@ const BINDINGS = {
 };
 
 const AXES = ["roll", "pitch", "throttle", "yaw"];
+const EMPTY_AXES = new Set();
 
 /** True when the event came from somewhere the user is typing. */
 function isTypingTarget(target) {
@@ -60,10 +61,14 @@ function isTypingTarget(target) {
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target.isContentEditable;
 }
 
-export function useKeyboardControl(axesRef, enabled, onKeysChange) {
+export function useKeyboardControl(axesRef, enabled, onKeysChange, ownedAxes) {
   // Keep the callback in a ref so re-renders don't tear down the key listeners.
   const cbRef = useRef(onKeysChange);
   cbRef.current = onKeysChange;
+
+  // Axes somebody else is driving (the altitude hold owns the throttle while it
+  // runs). Writing them here as well would mean two writers per frame.
+  const owned = ownedAxes || EMPTY_AXES;
 
   useEffect(() => {
     const held = new Set();
@@ -78,7 +83,7 @@ export function useKeyboardControl(axesRef, enabled, onKeysChange) {
       held.clear();
       for (const axis of AXES) {
         cur[axis] = 0;
-        axesRef.current[axis] = 0;
+        if (!owned.has(axis)) axesRef.current[axis] = 0;
       }
       if (hadKeys) notify();
     };
@@ -122,6 +127,10 @@ export function useKeyboardControl(axesRef, enabled, onKeysChange) {
       }
 
       for (const axis of AXES) {
+        if (owned.has(axis)) {
+          cur[axis] = 0;          // stay neutral so handing the axis back is smooth
+          continue;
+        }
         const want = Math.max(-1, Math.min(1, target[axis])) * KEY_MAX_DEFLECTION;
         const returning = Math.abs(want) < Math.abs(cur[axis]) || want * cur[axis] < 0;
         const rampMs = returning ? KEY_FALL_MS : KEY_RISE_MS;
@@ -149,7 +158,7 @@ export function useKeyboardControl(axesRef, enabled, onKeysChange) {
       cancelAnimationFrame(raf);
       panic();
     };
-  }, [axesRef, enabled]);
+  }, [axesRef, enabled, owned]);
 }
 
 export { BINDINGS };

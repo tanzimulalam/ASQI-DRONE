@@ -1971,3 +1971,84 @@ button.cmd {
   text-transform: uppercase;
   color: var(--muted);
 }
+
+/* ---- height presets ------------------------------------------------------
+   Number keys fly to a height and hold it; backtick lands. Shown rather than
+   remembered, and clickable for anyone who would rather not use the keyboard. */
+
+.heightdeck {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  flex-wrap: wrap;
+  padding: 0.45em 0.6em;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.hd-label {
+  font-size: var(--fs-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-right: 0.2em;
+}
+
+.hd-key,
+.hd-land {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1em;
+  min-width: 3.1em;
+  padding: 0.3em 0.35em;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--txt);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.hd-key:hover:not(:disabled),
+.hd-land:hover { border-color: var(--accent); }
+
+.hd-key:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.hd-key.on {
+  border-color: var(--ok);
+  background: rgba(36, 209, 126, 0.14);
+}
+
+.hd-land {
+  border-color: rgba(244, 56, 74, 0.45);
+  background: rgba(244, 56, 74, 0.1);
+}
+
+.hd-num {
+  font-family: var(--num);
+  font-size: 0.95rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.hd-m {
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.hd-now {
+  margin-left: auto;
+  font-family: var(--num);
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.hd-now.on { color: var(--ok); }
+
+.hd-alt {
+  margin-left: 0.8em;
+  color: var(--faint);
+}

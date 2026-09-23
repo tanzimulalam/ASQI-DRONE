@@ -63,3 +63,17 @@ export const KEY_FALL_MS = 150;
 // network hiccup does not raise the banner, low enough that a genuinely dead
 // command path is obvious within a second.
 export const CTRL_DEAD_MS = 1000;
+
+// ======= height presets =======
+// Number keys 1..6 fly to a height and hold it; backtick commands the flight
+// controller's own LAND. Heights are metres above where the aircraft armed,
+// which is what the barometer reports. 2.1 m is about seven feet.
+export const HOLD_HEIGHTS_M = [0.5, 0.8, 1.1, 1.4, 1.7, 2.1];
+// Stick offset per metre of error. 0.45 gives roughly 1 m/s of climb at a metre
+// out, which settles without overshooting into a ceiling.
+export const HOLD_KP = 0.45;
+// Asymmetric on purpose: more authority up than down.
+export const HOLD_MAX_UP = 0.35;
+export const HOLD_MAX_DOWN = -0.25;
+// Close enough. Below this the aircraft is left alone rather than hunting.
+export const HOLD_TOL_M = 0.08;
