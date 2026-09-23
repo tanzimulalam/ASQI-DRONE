@@ -69,8 +69,14 @@ def connect(device: str, baud: int, timeout: float = 30.0):
     return m
 
 
-def refuse_if_armed(m) -> None:
-    hb = recv(m, type="HEARTBEAT", blocking=True, timeout=5)
+def refuse_if_armed(m, timeout: float = 20.0) -> None:
+    # Retry rather than treat one miss as an answer. recv() swallows the
+    # pymavlink TypeError (gotcha 9), so a single dropped heartbeat used to abort
+    # the test on a perfectly healthy aircraft.
+    deadline = time.time() + timeout
+    hb = None
+    while hb is None and time.time() < deadline:
+        hb = recv(m, type="HEARTBEAT", blocking=True, timeout=5)
     if hb is None:
         sys.exit("no heartbeat to check arm state; refusing to spin motors blind")
     if bool(hb.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED):

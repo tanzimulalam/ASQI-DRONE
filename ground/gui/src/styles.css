@@ -1930,3 +1930,44 @@ button.cmd {
   font-size: 0.86rem;
   color: var(--muted);
 }
+
+/* ---- people counter ------------------------------------------------------
+   The headline number during a demonstration: big enough to read from the back
+   of a room, and visibly dim when the detector sees nobody rather than showing
+   a confident zero. */
+
+.people {
+  margin: 0.55em 0 0.2em;
+  padding: 0.5em 0.6em;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: rgba(63, 162, 232, 0.06);
+  text-align: center;
+  transition: border-color 0.25s ease, background 0.25s ease;
+}
+
+.people.on {
+  border-color: rgba(36, 209, 126, 0.45);
+  background: rgba(36, 209, 126, 0.1);
+}
+
+.people-n {
+  display: block;
+  font-family: var(--num);
+  font-size: clamp(30px, 3.4vw, 54px);
+  font-weight: 800;
+  line-height: 1;
+  color: var(--faint);
+  transition: color 0.25s ease;
+}
+
+.people.on .people-n { color: var(--ok); }
+
+.people-l {
+  display: block;
+  margin-top: 0.3em;
+  font-size: var(--fs-label);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}

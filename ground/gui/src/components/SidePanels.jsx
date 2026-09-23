@@ -64,12 +64,24 @@ export function VisionPanel({ det }) {
   const hist = history.current;
   const peak = Math.max(1, ...hist);
 
+  // People are the class an audience cares about, and the one a demonstration is
+  // usually about. Called out large so it reads from across a room, rather than
+  // being one row among seven.
+  const people = boxes.filter((b) => /^person$/i.test(b.class)).length;
+
   return (
     <aside className="sidepanel">
       <div className="panel-head">
         <span>Vision</span>
         {det && <span className="panel-count">{boxes.length}</span>}
       </div>
+
+      {det && (
+        <div className={`people${people ? " on" : ""}`}>
+          <span className="people-n">{people}</span>
+          <span className="people-l">{people === 1 ? "person" : "people"} in frame</span>
+        </div>
+      )}
 
       <div className="panel-stats">
         <StatRow
