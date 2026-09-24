@@ -77,3 +77,11 @@ export const HOLD_MAX_UP = 0.35;
 export const HOLD_MAX_DOWN = -0.25;
 // Close enough. Below this the aircraft is left alone rather than hunting.
 export const HOLD_TOL_M = 0.08;
+// The reported height wanders indoors (0.4 m in 25 s, measured on the bench with
+// the aircraft stationary), so the hold flies a smoothed version of it. At 10 Hz
+// telemetry this is roughly a half-second time constant: enough to ignore the
+// wander, quick enough to catch a real climb.
+export const ALT_SMOOTHING = 0.25;
+// A jump larger than this is a change of reference, not movement: arming re-sets
+// home, and the height jumps by however far off the old home was. Snap, do not ramp.
+export const ALT_STEP_RESET_M = 1.0;

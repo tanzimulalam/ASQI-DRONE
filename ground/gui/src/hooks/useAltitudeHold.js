@@ -1,5 +1,13 @@
 import { useEffect, useRef } from "react";
-import { HOLD_KP, HOLD_MAX_UP, HOLD_MAX_DOWN, HOLD_TOL_M, TLM_STALE_MS } from "../config.js";
+import {
+  HOLD_KP,
+  HOLD_MAX_UP,
+  HOLD_MAX_DOWN,
+  HOLD_TOL_M,
+  ALT_SMOOTHING,
+  ALT_STEP_RESET_M,
+  TLM_STALE_MS,
+} from "../config.js";
 
 /**
  * Fly to, and hold, a chosen height.
@@ -35,6 +43,12 @@ import { HOLD_KP, HOLD_MAX_UP, HOLD_MAX_DOWN, HOLD_TOL_M, TLM_STALE_MS } from ".
 export function useAltitudeHold(axesRef, { target, tlm, tlmAt, onCancel }) {
   const cbRef = useRef(onCancel);
   cbRef.current = onCancel;
+  // Smoothed height. The altitude the aircraft reports is relative to home and
+  // wanders indoors: measured at 0.4 m of wander in 25 s with the aircraft
+  // sitting on the floor. Chasing that would make the aircraft bob, so the hold
+  // flies a filtered version. A large step (arming re-sets home) snaps instead
+  // of ramping, because that is a change of reference, not movement.
+  const smoothRef = useRef(null);
 
   // Zero the axis whenever the hold stops, so a stale offset is never left
   // behind for the sender to keep transmitting.
@@ -42,6 +56,7 @@ export function useAltitudeHold(axesRef, { target, tlm, tlmAt, onCancel }) {
     if (target == null) return undefined;
     return () => {
       axesRef.current.throttle = 0;
+      smoothRef.current = null;
     };
   }, [target, axesRef]);
 
@@ -59,8 +74,15 @@ export function useAltitudeHold(axesRef, { target, tlm, tlmAt, onCancel }) {
     if (tlm.pilot_takeover) return cancel("pilot takeover");
     if (tlm.mode !== "ALT_HOLD") return cancel(`mode ${tlm.mode || "changed"}`);
 
-    const alt = Number(tlm.alt);
-    if (!Number.isFinite(alt)) return cancel("no altitude reading");
+    const raw = Number(tlm.alt);
+    if (!Number.isFinite(raw)) return cancel("no altitude reading");
+
+    const prev = smoothRef.current;
+    const alt =
+      prev == null || Math.abs(raw - prev) > ALT_STEP_RESET_M
+        ? raw
+        : prev + ALT_SMOOTHING * (raw - prev);
+    smoothRef.current = alt;
 
     const err = target - alt;
     axesRef.current.throttle =
