@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Piper Run Sheet</title>
+<style>
+  :root {
+    --ink: #14202b; --muted: #5d6b7a; --line: #d8e2ec; --bg: #ffffff;
+    --navy: #0d1b2e; --blue: #1f6fb2; --red: #b3261e; --amber: #8a5a00; --green: #16653a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink: #e7eef6; --muted: #9fb0c1; --line: #24344a; --bg: #0d141c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 16px 60px; background: var(--bg); color: var(--ink);
+    font: 15px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 2px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
+  h2 {
+    font-size: 15px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--blue); margin: 26px 0 8px; padding-bottom: 5px;
+    border-bottom: 2px solid var(--line);
+  }
+  ol, ul { margin: 6px 0; padding-left: 22px; }
+  li { margin: 5px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0 4px; font-size: 14px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--navy); color: #fff; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; }
+  code { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+  pre {
+    background: rgba(127,127,127,0.10); padding: 9px 11px; border-radius: 6px;
+    overflow-x: auto; font-size: 12.5px; margin: 6px 0;
+  }
+  .box { border-left: 3px solid var(--blue); background: rgba(127,127,127,0.07);
+         padding: 10px 12px; border-radius: 0 6px 6px 0; margin: 12px 0; }
+  .danger { border-left-color: var(--red); }
+  .warn { border-left-color: var(--amber); }
+  .ok { border-left-color: var(--green); }
+  .tag { font-weight: 700; letter-spacing: 0.06em; font-size: 12px; text-transform: uppercase; }
+  .danger .tag { color: var(--red); } .warn .tag { color: var(--amber); }
+  .ok .tag { color: var(--green); } .box .tag { color: var(--blue); }
+  kbd {
+    font-family: ui-monospace, Consolas, monospace; border: 1px solid var(--line);
+    border-bottom-width: 2px; border-radius: 4px; padding: 1px 6px; font-size: 13px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Piper: indoor showcase run sheet</h1>
+<div class="sub">Ground station on <code>drone-tx</code> &middot; cockpit at <code>http://10.42.0.254:8000</code></div>
+
+<h2>1. Power up</h2>
+<ol>
+  <li>Battery in. Ground station on. Both start everything themselves.</li>
+  <li>Laptop joins Wi-Fi <strong>drone-tx</strong>.</li>
+  <li>Open <code>http://10.42.0.254:8000</code>. If the page is stale, hard reload with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>.</li>
+  <li>Piper's card should read <strong>ONLINE</strong> with a battery around 16 V. Press <strong>Fly Piper</strong> and enter the aircraft password.</li>
+</ol>
+
+<h2>2. Before arming</h2>
+<ul>
+  <li>Transmitter <strong>on</strong>, throttle <strong>fully down</strong>, <strong>SwC middle</strong> (Alt Hold).</li>
+  <li>Hardware safety switch pressed until solid.</li>
+  <li>Cockpit shows video and detection boxes. Click the page once so the keyboard works.</li>
+  <li>If the aircraft refuses to arm, the cockpit says why in an amber <strong>CANNOT ARM</strong> band with the fix.</li>
+</ul>
+
+<h2>3. Flying</h2>
+<table>
+  <tr><th>Key</th><th>What it does</th></tr>
+  <tr><td><kbd>W</kbd> / <kbd>S</kbd></td><td>Throttle up / down. Release = hold height.</td></tr>
+  <tr><td><kbd>A</kbd> / <kbd>D</kbd></td><td>Yaw left / right.</td></tr>
+  <tr><td>Numpad <kbd>8</kbd><kbd>2</kbd><kbd>4</kbd><kbd>6</kbd></td><td>Pitch forward/back, roll left/right. Arrows work too.</td></tr>
+  <tr><td><kbd>1</kbd>&hellip;<kbd>6</kbd></td><td>Fly to and hold 0.5, 0.8, 1.1, 1.4, 1.7, 2.1 m.</td></tr>
+  <tr><td><kbd>`</kbd></td><td><strong>Land.</strong> The flight controller lands itself.</td></tr>
+</table>
+<p style="font-size:14px;color:var(--muted);margin-top:4px">
+  Heights are measured from where you armed. Touching <kbd>W</kbd> or <kbd>S</kbd> cancels a hold and gives you the throttle back.
+</p>
+
+<h2>4. Emergency</h2>
+<div class="box danger">
+  <div class="tag">If anything looks wrong</div>
+  <strong>Flip SwC UP.</strong> The aircraft lands itself and the ground station stops sending sticks.<br>
+  <strong>If it tips or hits something:</strong> throttle fully down and <strong>Disarm</strong>. Do not try to catch it with the sticks.<br>
+  <strong>SwC DOWN</strong> gives you manual control in Stabilize, where the throttle stick directly drives the motors.
+</div>
+
+<h2>5. First flight of the session</h2>
+<ol>
+  <li><strong>Hop:</strong> lift to 20&ndash;30 cm, hold two seconds, set down. If it leans or skates, stop and investigate.</li>
+  <li>Lift decisively to about a metre. Do not creep: tip-overs happen with a leg still loaded.</li>
+  <li>Check gently: left, right, forward, back, yaw each way. Each should go where you expect.</li>
+  <li>Try <kbd>2</kbd>, then <kbd>4</kbd>, then <kbd>`</kbd> so the height keys are familiar before an audience sees them.</li>
+  <li>Practise <strong>SwC up</strong> once in the air.</li>
+</ol>
+
+<h2>6. If something refuses</h2>
+<table>
+  <tr><th>Message or symptom</th><th>Do this</th></tr>
+  <tr><td>Hardware safety switch</td><td>Press and hold the button on the aircraft until its light is solid.</td></tr>
+  <tr><td>Pitch / roll not neutral</td><td>Hands off both sets of sticks, then arm again.</td></tr>
+  <tr><td>Battery below minimum</td><td>Fit a charged pack. Arming needs above 14.0 V.</td></tr>
+  <tr><td>RC not found</td><td>Transmitter on, throttle down. Check the receiver LED is solid.</td></tr>
+  <tr><td>Needs position / fence</td><td>Should not appear indoors now. If it does, the aircraft is not in indoor configuration.</td></tr>
+  <tr><td>Video black, detection still working</td><td>Hard reload the page. The stream drops and does not retry.</td></tr>
+  <tr><td>Cockpit says CONTROL LOST or NO CONTROL AUTHORITY</td><td>Land with SwC up. Do not keep flying.</td></tr>
+  <tr><td>Aircraft drifts steadily one way</td><td>Land. Check the battery has not shifted and the props are clean.</td></tr>
+</table>
+
+<h2>7. Between flights</h2>
+<ul>
+  <li>Swap to a charged pack: arming stops below 14.0 V, and the aircraft hovers at about 68% throttle, so it is not a light airframe.</li>
+  <li>Touch each motor. One noticeably hotter than the rest means stop flying and tell me.</li>
+  <li>Check the props for chips after any contact.</li>
+</ul>
+
+<h2>8. After the showcase</h2>
+<div class="box warn">
+  <div class="tag">Restore before this aircraft flies outdoors</div>
+  It is currently in indoor configuration: no geofence, GPS pre-arm checks dropped, and the mode switch remapped.
+<pre>ssh -t drone "python3 /tmp/piper_outdoor.py"</pre>
+  Both values it reads back must be 1, and the switch goes back to Stabilize / Alt Hold / Loiter.
+</div>
+
+<h2>Quick facts</h2>
+<table>
+  <tr><th>Item</th><th>Value</th></tr>
+  <tr><td>Cockpit</td><td><code>http://10.42.0.254:8000</code></td></tr>
+  <tr><td>Aircraft password</td><td>In <code>/etc/drone/drone.env</code> on the aircraft. Never written down here.</td></tr>
+  <tr><td>Flight modes</td><td>SwC up LAND &middot; middle ALT HOLD &middot; down STABILIZE</td></tr>
+  <tr><td>Arming voltage</td><td>14.0 V minimum, land well before that</td></tr>
+  <tr><td>Max climb</td><td>2.5 m/s, keyboard reaches about 1.5 m/s</td></tr>
+  <tr><td>Link failsafe</td><td>600 ms without control and the aircraft lands itself</td></tr>
+</table>
+
+</div>
+</body>
+</html>
