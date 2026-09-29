@@ -46,12 +46,23 @@ so the video panel is empty. On the real system it carries the drone's camera an
 
 | Aircraft | State | Flight controller | Companion computer |
 |---|---|---|---|
-| **Piper** | Flying since 2026-08-06 | Pixhawk 6C, ArduCopter, `SYSID_THISMAV=1` | Jetson Orin Nano Super, JetPack 6.2 |
+| **Piper** | Flying, indoors and out | Pixhawk 6C, ArduCopter, `SYSID_THISMAV=1` | Jetson Orin Nano Super, JetPack 6.2 |
 | **Omega** | Built and configured, not yet flown | Pixhawk 6C, ArduCopter 4.6.3, `SYSID_THISMAV=2` | Jetson on JetPack 5 |
 | **Vulkan** | Airframe in build | not yet fitted | not yet fitted |
 
 All three are Holybro X500 class quadcopters built to the same design. The long
 term goal is a coordinated swarm of all three.
+
+**Piper carries a downward lidar** (Benewake TF02-Pro on TELEM2) for height above
+ground, terrain following and a proper landing flare. Omega has the same sensor
+fitted and configured.
+
+> **Piper's nose is the end the flight controller's arrow points at**, which is the
+> end carrying the lidar, and it is marked with tape. The board, the ESC wiring and
+> the propeller directions all agree with each other; only the operator's mental
+> model was ever reversed. Do not "correct" this by inverting axes in the ground
+> station: the transmitter cannot be inverted, and a GUI that disagrees with the
+> transmitter is dangerous at exactly the moment someone takes over. See gotcha 21.
 
 The aircraft the ground station knows about are listed in
 `/etc/drone/fleet.json` on the ground Jetson, not in code. Adding an aircraft is
@@ -108,6 +119,31 @@ Three design decisions shape everything else:
 
 The wire contract between the two halves is [`airborne/PROTOCOL.md`](airborne/PROTOCOL.md).
 
+## Diagnostic tools
+
+Everything in `airborne/tools/` runs on a drone Jetson and talks to the flight
+controller over its second USB interface, so the flight daemon keeps its own port
+and does not need stopping. All of them refuse to run while the aircraft is armed,
+and every parameter write is read back from the vehicle before it is reported as
+done.
+
+| Tool | What it answers |
+|---|---|
+| `params.py` | Read or write any flight controller parameter, with read-back |
+| `benchmode.sh` | Relax and restore the two arming checks for indoor bench work |
+| `indoor_mode.py` / `outdoor_mode.py` | Whole indoor configuration: fence, GPS checks, mode switch mapping |
+| `motortest.py` | Spin one motor at a time, props off, to confirm wiring and order |
+| `motorcurrent.py` | Compare the four motors by current draw. Finds a weak motor a bench spin cannot |
+| `hoverwatch.py` | Live motor outputs during a hover, warns when one motor works far harder than its partner |
+| `tilt_check.py` | Whether the flight controller's idea of forward matches the airframe |
+| `lidar_setup.py` | Configure a TF02-Pro on TELEM2 and verify live readings |
+| `getlog.py` | Download a flight log from the flight controller's SD card |
+| `rcwatch.py` | Live transmitter channel values |
+| `fcreboot.py` | Reboot the flight controller without unplugging it |
+
+`ground/tools/` holds `linkcheck.sh` for range testing and `sim_drone.py`, a
+stand-in aircraft for working on the interface with no drone present.
+
 ## Repository layout
 
 ```
@@ -124,7 +160,7 @@ ASQI-DRONE/
 │   ├── airborne_daemon/     packet validation, failsafe state machine, MAVLink
 │   ├── camera_daemon/       USB webcam to MJPEG
 │   ├── systemd/             drone-airborne and drone-camera units
-│   ├── tools/               params.py, benchmode.sh, motortest.py, rcwatch.py, ...
+│   ├── tools/               params, bench mode, motor tests, lidar setup, log download
 │   ├── param-backups/       flight controller parameter snapshots
 │   ├── tests/               pytest suite for the daemon
 │   └── PROTOCOL.md          the wire contract
@@ -278,6 +314,10 @@ and reachable. The fleet screen shows all three aircraft with live health.
 
 **Open:**
 
+- **Finish diagnosing the 2026-09-24 crash.** The log shows the aircraft was
+  commanded correctly and could not execute it, which points at motor 3. Bench
+  tests since have been clean and it has flown since, so treat it as unresolved
+  rather than fixed (see HANDOFF section 8b)
 - Fly Omega for the first time
 - A 50 m range test, the one original goal never run
 - Omega's camera daemon, and a network layout where one ground station reaches
@@ -296,6 +336,8 @@ The full list, with the evidence behind each item, is in
 | [`ground/README.md`](ground/README.md) | You are going to fly, bench test or range test. |
 | [`airborne/README.md`](airborne/README.md) | You are changing the daemon or bringing up a new aircraft. |
 | [`airborne/PROTOCOL.md`](airborne/PROTOCOL.md) | You are changing anything that crosses the link. |
+| [`docs/piper-run-sheet.html`](docs/piper-run-sheet.html) | You are about to fly indoors and want one page, offline, covering startup, the keys, the emergency action and what each refusal means. |
+| [`docs/ASQI-Drone-Project-Overview.pdf`](docs/ASQI-Drone-Project-Overview.pdf) | Somebody outside the project asked what this is. |
 
 `HANDOFF.md` tells you not to trust it, including its own parameter table. That
 is deliberate: three of six safety parameters on the flight controller

@@ -373,6 +373,54 @@ GUI pitch-forward commanded nose-up. Fixed with `DRONE_INVERT_PITCH=1` in
 `/etc/drone/drone.env`. **Roll, yaw and throttle have still never been checked.**
 See gotcha 11.
 
+
+---
+
+## 8b. The crash of 2026-09-24, and what the log says
+
+Piper flipped and crashed about 1.5 seconds after lifting off, indoors, during a
+props-on test. Nobody was hurt. There was a brief burning smell at the moment of
+impact, which is consistent with the motors being driven against the floor for the
+two seconds before the flight controller's crash check disarmed it.
+
+**What the flight controller recorded** (log 38, armed at 876.7 s, crash detected
+at 885.5 s):
+
+```
+ 882.94   desRoll +3.5   roll  -64.3 | M1 1527  M2 1778  M3 1949  M4 1150
+ 883.14   desRoll +13.4  roll -145.4 | M1 1333  M2 1877  M3 1949  M4 1150
+```
+
+The pilot commanded roll right. The mixer did the right thing: left-side motors to
+their 1949 ceiling, right-side motors to their 1150 floor, which is every bit of
+roll authority the aircraft has. **The aircraft rolled left anyway**, through -64,
+-145, to inverted. Commands were correct and could not be executed, so a motor was
+not delivering the thrust it was asked for.
+
+Two pieces of evidence narrow it:
+
+- The saturated side was the flight controller's **left**, which is motors 2 and 3.
+- The aircraft yawed steadily right as it went over. Losing a **clockwise** motor
+  leaves the counter-clockwise pair's torque unopposed and produces exactly that.
+  The clockwise motors are 3 and 4.
+
+The intersection is **motor 3** (`RCOU.C3`, test order D, the operator's rear-right
+once the tail is taken as the nose). It was also the motor the controller leaned on
+hardest before the divergence: mean output 1628 against 1363 for its diagonal
+partner.
+
+**This was never confirmed on the bench.** Per-motor current draw with props off,
+at 25 and 50 percent throttle, showed all four within 10 percent: 0.29, 0.29, 0.24,
+0.24 A. That test cannot load a motor the way hovering does, so it rules nothing
+out. A later two minute hover was clean, and the aircraft has flown since.
+
+**Treat this as unresolved.** An intermittent ESC or a bad bullet connector behaves
+exactly this way: fine on a bench, fine for minutes at a time, then gone. The
+diagnosis to finish is swapping motor 3's ESC to another arm and seeing whether the
+symptom follows the ESC or stays with the motor. `tools/hoverwatch.py` prints the
+four motor outputs live during a hover and warns when one runs far above its
+diagonal partner, which is the signature to watch for.
+
 ---
 
 ## 9. Gotchas
@@ -571,6 +619,65 @@ the numbers belong to.
 
 Device ids decode as `bus_type | bus<<3 | address<<8 | devtype<<16`, which is how
 658433 and 658953 were identified as two different IST8310s rather than one.
+
+**21. Piper's flight controller faces the tail, and the whole aircraft agrees with
+it.** The arrow on the board points at what the operator called the back. The ESCs
+are wired to match the board, and the prop directions match too, so the aircraft is
+internally consistent and flies correctly: its nose is the end the arrow points at.
+What was reversed was the operator's mental model, which made every pitch and roll
+input feel mirrored. Verified by running `tools/motortest.py` one motor at a time
+and checking which physical motor turned: all four matched a 180 degree rotation
+exactly.
+
+The fix applied was a piece of tape marking that end as the nose, because the
+transmitter feeds the flight controller directly and cannot be inverted in
+software. **Do not "fix" this by flipping the axes in the ground station**: the GUI
+and the transmitter would then disagree about forward, and the takeover moment is
+exactly when that gets someone hurt (see gotcha 11). The real fix is to remount the
+board arrow-forward and rewire the ESCs to match, then flip nothing.
+
+**22. The TF02-Pro ships in UART mode, and an I2C wiring will never answer.** Hours
+were spent checking wiring, pin 1 orientation and pull-ups on a sensor that was
+electrically fine. ArduPilot reported `PreArm: Rangefinder 1: Not Detected`, which
+says only that nothing answered at the configured address. Benewake's own note is
+easy to miss: IIC and UART use the same four wires, and the sensor must be switched
+to IIC with their Windows tool first. Wiring it to TELEM2 as a serial device
+(`SERIAL2_PROTOCOL=9`, `RNGFND1_TYPE=27`) worked immediately with no mode change.
+
+Wire colours, from the manual: red VCC, white RXD/SDA, green TXD/SCL, black GND.
+The middle two cross when connecting to a UART, because one device's transmit is
+the other's receive.
+
+**23. `/tmp` on the drone Jetson is wiped on every reboot.** Diagnostic scripts
+staged there vanish with each power cycle, which during a long session means
+re-copying them repeatedly. Put anything you will want twice in the home directory
+or in the repository.
+
+**24. ArduPilot refuses a mid-hover switch to STABILIZE, so it is not a dependable
+takeover path.** Flipping the mode switch to STABILIZE while the ground station is
+flying gets `Mode change to STABILIZE failed: throttle too high`, because the
+throttle ArduPilot checks is the one the ground station is holding at centre to
+mean "hold altitude". The switch works on the ground and fails in the air, which is
+the worst possible combination.
+
+For indoor flying the mode switch is now: **up LAND, middle ALT_HOLD, down
+STABILIZE**. LAND has no throttle check, cannot be refused, and immediately
+releases the ground station's override because it is not an allowed pilot mode. One
+flick of the switch and the aircraft puts itself on the floor. `tools/indoor_mode.py`
+sets this and `tools/outdoor_mode.py` restores STABILIZE/ALT_HOLD/LOITER.
+
+**25. Indoors the magnetic field reads about twice Earth's, everywhere.** Both of
+Piper's compasses reported 1000 to 1440 mGauss against an expected 250 to 650, in
+every part of the building, which blocks arming with `PreArm: Check mag field`. A
+building distorts the field locally; a reading that follows the aircraft around is
+coming from the aircraft. The Pixhawk's buzzer and the safety switch module both
+contain magnets and are the usual culprits when they sit near the mast.
+
+For indoor flight the compass is not needed: there is no GPS, nothing is
+navigating, and yaw from the gyro alone drifts slowly enough to fly visually.
+`tools/indoor_mode.py` has a companion path for this: set `COMPASS_USE*=0` and drop
+the compass bit from `ARMING_CHECK`. **Restore both before flying outdoors**, where
+Loiter and RTL depend on heading.
 
 ---
 
