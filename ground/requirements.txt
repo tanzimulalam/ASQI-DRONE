@@ -4,3 +4,5 @@ fastapi>=0.110,<1.0
 uvicorn[standard]>=0.29
 pydantic>=2.6
 pydantic-settings>=2.2
+# Parses the raw MAVLink the aircraft forwards for /sensors/* (read only).
+pymavlink>=2.4

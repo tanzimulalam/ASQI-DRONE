@@ -16,6 +16,7 @@ from pydantic import TypeAdapter, ValidationError
 from . import PROTOCOL_VERSION, __version__
 from . import fleet as fleet_mod
 from .camera import add_camera_routes
+from .sensors import SensorHub, add_sensor_routes, start_receiver
 from .detections import detection_relay
 from .hub import Hub
 from .protocol import AuthIn, ClientMessage
@@ -50,6 +51,17 @@ async def lifespan(app: FastAPI):
     app.state.udp = udp
     app.state.session = session
     app.state.fleet = fleet_mod.load_fleet(settings.fleet_file, settings.candidate_ips)
+
+    # Research sensor stream: a read-only UDP feed of raw MAVLink forwarded by
+    # the aircraft, parsed here and served as JSON. Entirely separate from the
+    # control path, and nothing is transmitted back.
+    sensors = SensorHub()
+    app.state.sensors = sensors
+    sensor_transport = (
+        await start_receiver(sensors, settings.host, settings.sensors_udp_port)
+        if settings.sensors_enabled
+        else None
+    )
     # Last health summary per drone, keyed by fleet key: (monotonic time, summary).
     app.state.health = {}
 
@@ -74,6 +86,8 @@ async def lifespan(app: FastAPI):
             except asyncio.CancelledError:
                 pass
         udp.stop()
+        if sensor_transport is not None:
+            sensor_transport.close()
         log.info("ground bridge stopped")
 
 
@@ -192,6 +206,10 @@ def create_app() -> FastAPI:
 
     # reverse proxy for the drone camera feed (registered before the SPA mount)
     add_camera_routes(app)
+
+    # Sensor streams, behind the same drone session as the cockpit.
+    add_sensor_routes(app, lambda: bool(getattr(app.state, "session", None)
+                                        and app.state.session.active))
 
     if spa_built:
         # Mounted last so the API routes above take precedence. html=True serves

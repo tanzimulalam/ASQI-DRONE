@@ -1,0 +1,33 @@
+[Unit]
+Description=Drone sensor forwarder (read-only MAVLink to the ground bridge)
+Documentation=https://github.com/tanzimulalam/ASQI-DRONE
+After=network.target
+# Deliberately not Requires= or BindsTo= the control daemon: this is a research
+# convenience and must never be able to affect whether the aircraft can fly.
+
+StartLimitIntervalSec=120
+StartLimitBurst=8
+
+[Service]
+Type=simple
+User=john
+Group=john
+# The flight controller's USB interfaces are root:dialout on JetPack.
+SupplementaryGroups=dialout
+WorkingDirectory=/home/john/Documents/ASQI-DRONE/airborne
+EnvironmentFile=-/etc/drone/drone.env
+# One destination per --to. 14551 is the ground bridge, which serves /sensors/*.
+# Add the ground station on 14550 when you want Mission Planner to see it too.
+# --bidirectional is intentionally absent: a ground station on these ports could
+# otherwise arm this aircraft. Add it by hand, on the bench, when you need it.
+ExecStart=/usr/bin/python3 -m sensor_forward --to 10.42.0.254:14551 --to 10.42.0.254:14550
+Restart=always
+RestartSec=5
+# Lowest priority of the three daemons: if the board is ever short of CPU, the
+# thing that flies the aircraft and the camera both come first.
+Nice=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

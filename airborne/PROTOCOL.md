@@ -113,6 +113,52 @@ no one is flying.
   "statustext":"...", "events":[{"kind":"armed","msg":"vehicle ARMED","ts":...}] }
 ```
 
+## Sensor stream (research, out of band, read only)
+
+Separate from everything above and deliberately outside the control path. The
+aircraft runs `sensor_forward`, which reads the flight controller's **spare USB
+interface** (`...-if02`, while the control daemon keeps `...-if00`) and forwards
+raw MAVLink over UDP:
+
+```
+Pixhawk --if02--> sensor_forward --UDP--> ground bridge --> /sensors/* (JSON over WebSocket)
+                                 --UDP--> Mission Planner (native MAVLink)
+```
+
+It never commands the aircraft. The only thing it writes to the flight
+controller is stream-rate requests, and ArduPilot keeps those per link, so the
+control daemon's own telemetry is unchanged. `--bidirectional` exists for bench
+configuration with Mission Planner and should not be used in flight: ArduPilot
+accepts arm and mode commands from any system id, so two ground stations on one
+aircraft is two things that can command it.
+
+Ground bridge endpoints, each gated on the same drone session as the cockpit:
+
+| Endpoint | Contents | Rate |
+|---|---|---|
+| `/sensors/attitude` | roll, pitch, yaw, angular rates, armed, mode | 20 Hz |
+| `/sensors/imu` | both IMUs (accel, gyro, mag), vibration, clipping | 10 Hz |
+| `/sensors/motors` | four motor outputs, RC inputs, RSSI | 10 Hz |
+| `/sensors/position` | altitude (baro and rangefinder), speed, GPS | 5 Hz |
+| `/sensors/power` | voltage, current, consumed mAh | 2 Hz |
+| `/sensors/all` | every group above, merged | 5 Hz |
+
+Each frame is one JSON object:
+
+```json
+{ "group":"position", "ts":1790000000123, "link_age_ms":84,
+  "data": { "alt_rel_m":1.42, "rangefinder_m":1.37, "groundspeed_ms":0.1,
+            "gps_fix":1, "gps_sats":0 } }
+```
+
+`ts` is milliseconds since the epoch on the ground station, and `link_age_ms` is
+how long ago the aircraft last sent anything, so a stalled feed is visible rather
+than looking like a motionless aircraft. `GET /sensors/status` reports the rates
+and message counts.
+
+`ground/tools/sensor_client.py` is a worked example that logs in, holds the
+session, and records frames to a file.
+
 ## Video (out of band)
 
 The camera feed is **not** part of the JSON wire protocol — it is a separate HTTP

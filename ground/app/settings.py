@@ -75,6 +75,13 @@ class Settings(BaseSettings):
     # Per-client outbound queue depth before we start dropping stale frames.
     ws_send_queue_max: int = Field(default=8, ge=1, le=256)
 
+    # Research sensor stream. The aircraft forwards raw MAVLink here over UDP and
+    # the bridge serves it as JSON on /sensors/*. Receive only: nothing is ever
+    # sent back to the aircraft on this socket, which is why it cannot interfere
+    # with flying. Disable it and the bridge behaves exactly as it did before.
+    sensors_enabled: bool = True
+    sensors_udp_port: int = Field(default=14551, ge=1, le=65535)
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
