@@ -24,9 +24,31 @@ from pymavlink import mavutil
 
 log = logging.getLogger("sensor_forward")
 
-# Rates asked of the flight controller, in Hz, per MAVLink stream group. These
-# are what the sensor endpoints can show; everything is capped again on the
-# ground before it reaches a browser.
+# Messages we want and how often, in Hz. Asked for individually with
+# SET_MESSAGE_INTERVAL, which is the supported way: REQUEST_DATA_STREAM is
+# deprecated and was observed being ignored on this aircraft, leaving only
+# heartbeats flowing. Re-asserted periodically, because a flight controller that
+# reboots, or a request that is dropped, otherwise leaves the stream silent
+# forever.
+MESSAGE_RATES = {
+    30: 20,     # ATTITUDE
+    27: 10,     # RAW_IMU
+    116: 10,    # SCALED_IMU2
+    129: 10,    # SCALED_IMU3
+    241: 5,     # VIBRATION
+    36: 10,     # SERVO_OUTPUT_RAW
+    65: 10,     # RC_CHANNELS
+    33: 5,      # GLOBAL_POSITION_INT
+    74: 5,      # VFR_HUD
+    173: 5,     # RANGEFINDER
+    132: 5,     # DISTANCE_SENSOR
+    24: 2,      # GPS_RAW_INT
+    1: 2,       # SYS_STATUS
+    147: 1,     # BATTERY_STATUS
+}
+
+# Kept as a fallback: older firmware honours these even when it ignores
+# SET_MESSAGE_INTERVAL, and asking twice costs nothing.
 STREAM_RATES = {
     mavutil.mavlink.MAV_DATA_STREAM_RAW_SENSORS: 10,      # IMUs, vibration
     mavutil.mavlink.MAV_DATA_STREAM_EXTENDED_STATUS: 5,   # GPS, power, status
@@ -68,6 +90,7 @@ class Forwarder:
         self._link = None
         self._sent = 0
         self._received = 0
+        self._requested_at = 0.0
 
     # -- flight controller --------------------------------------------------- #
     def _connect(self):
@@ -87,11 +110,19 @@ class Forwarder:
         raise SystemExit("no heartbeat from the flight controller within 30 s")
 
     def _request_streams(self) -> None:
+        for msg_id, hz in MESSAGE_RATES.items():
+            self._link.mav.command_long_send(
+                self._link.target_system, self._link.target_component,
+                mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, 0,
+                msg_id, int(1_000_000 / hz), 0, 0, 0, 0, 0,
+            )
         for stream, rate in STREAM_RATES.items():
             self._link.mav.request_data_stream_send(
                 self._link.target_system, self._link.target_component, stream, rate, 1
             )
-        log.info("requested %d stream groups", len(STREAM_RATES))
+        self._requested_at = time.time()
+        log.info("asked for %d messages and %d stream groups",
+                 len(MESSAGE_RATES), len(STREAM_RATES))
 
     # -- the loop ------------------------------------------------------------ #
     def run(self) -> None:
@@ -128,8 +159,14 @@ class Forwarder:
                     self._sent += 1
                 except OSError as exc:             # a destination going away is not fatal
                     log.debug("send to %s:%d failed: %s", dest[0], dest[1], exc)
-            if time.time() - last_report > 60:
-                last_report = time.time()
+            now = time.time()
+            # Re-assert the rates: a request can be dropped, and a flight
+            # controller reboot silently resets them. Cheap insurance against a
+            # feed that looks alive (heartbeats) but carries no sensors.
+            if now - self._requested_at > 10:
+                self._request_streams()
+            if now - last_report > 60:
+                last_report = now
                 log.info("forwarded %d messages", self._received)
 
     def _uplink_loop(self) -> None:

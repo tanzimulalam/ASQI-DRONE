@@ -164,6 +164,14 @@ class SensorHub:
                                           if msg.current_consumed != -1 else None)
         elif kind == "HEARTBEAT":
             from pymavlink import mavutil
+            # Several things on a MAVLink network emit heartbeats, including
+            # ground stations and peripherals, and theirs carry no flight mode.
+            # Taking them produced "Mode(0x00000000)" flickering through the
+            # stream, so only the autopilot's own heartbeat counts here.
+            if (msg.get_srcComponent() != 1
+                    or msg.type == mavutil.mavlink.MAV_TYPE_GCS
+                    or msg.autopilot == mavutil.mavlink.MAV_AUTOPILOT_INVALID):
+                return
             g["attitude"]["armed"] = bool(
                 msg.base_mode & mavutil.mavlink.MAV_MODE_FLAG_SAFETY_ARMED)
             g["attitude"]["mode"] = mavutil.mode_string_v10(msg)
